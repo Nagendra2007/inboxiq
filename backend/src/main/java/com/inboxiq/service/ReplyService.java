@@ -5,7 +5,6 @@ import com.inboxiq.ai.AiResponseParser;
 import com.inboxiq.ai.dto.ReplyAiResult;
 import com.inboxiq.ai.prompt.EmailReplyPrompt;
 import com.inboxiq.ai.prompt.PromptPair;
-import com.inboxiq.config.AppProperties;
 import com.inboxiq.entity.EmailMessage;
 import com.inboxiq.entity.GeneratedReply;
 import com.inboxiq.entity.MailAccount;
@@ -33,20 +32,20 @@ public class ReplyService {
 
     private final AiClient aiClient;
     private final AiResponseParser aiResponseParser;
-    private final AppProperties appProperties;
+    private final AiSettingsService aiSettingsService;
     private final GeneratedReplyRepository generatedReplyRepository;
     private final GmailInboxClient gmailInboxClient;
     private final RateLimiterService rateLimiterService;
 
     public ReplyService(AiClient aiClient,
                          AiResponseParser aiResponseParser,
-                         AppProperties appProperties,
+                         AiSettingsService aiSettingsService,
                          GeneratedReplyRepository generatedReplyRepository,
                          GmailInboxClient gmailInboxClient,
                          RateLimiterService rateLimiterService) {
         this.aiClient = aiClient;
         this.aiResponseParser = aiResponseParser;
-        this.appProperties = appProperties;
+        this.aiSettingsService = aiSettingsService;
         this.generatedReplyRepository = generatedReplyRepository;
         this.gmailInboxClient = gmailInboxClient;
         this.rateLimiterService = rateLimiterService;
@@ -68,8 +67,7 @@ public class ReplyService {
                 userDisplayName, email.getSender(), email.getSubject(), email.getBodyText(),
                 priorThreadMessages, userInstruction);
 
-        String raw = aiClient.complete(prompt.systemPrompt(), prompt.userPrompt(),
-                appProperties.getAi().getModel(), true);
+        String raw = aiClient.complete(aiSettingsService.current(), prompt.systemPrompt(), prompt.userPrompt(), true);
         ReplyAiResult result = aiResponseParser.parseReply(raw);
 
         GeneratedReply reply = new GeneratedReply();
@@ -94,8 +92,7 @@ public class ReplyService {
                 .orElseThrow(() -> new ResourceNotFoundException("Draft not found"));
 
         PromptPair prompt = EmailReplyPrompt.buildAdjust(userDisplayName, previous.getGeneratedContent(), adjustmentInstruction);
-        String raw = aiClient.complete(prompt.systemPrompt(), prompt.userPrompt(),
-                appProperties.getAi().getModel(), true);
+        String raw = aiClient.complete(aiSettingsService.current(), prompt.systemPrompt(), prompt.userPrompt(), true);
         ReplyAiResult result = aiResponseParser.parseReply(raw);
 
         GeneratedReply reply = new GeneratedReply();
@@ -122,8 +119,7 @@ public class ReplyService {
                                                 String toAddress, String subject, String userInstruction) {
         rateLimiterService.checkAiRequest(userId);
         PromptPair prompt = EmailReplyPrompt.buildCompose(userDisplayName, toAddress, subject, userInstruction);
-        String raw = aiClient.complete(prompt.systemPrompt(), prompt.userPrompt(),
-                appProperties.getAi().getModel(), true);
+        String raw = aiClient.complete(aiSettingsService.current(), prompt.systemPrompt(), prompt.userPrompt(), true);
         ReplyAiResult result = aiResponseParser.parseReply(raw);
 
         GeneratedReply reply = new GeneratedReply();
@@ -143,8 +139,7 @@ public class ReplyService {
         GeneratedReply previous = ownedDraftOrThrow(previousDraftId, account);
 
         PromptPair prompt = EmailReplyPrompt.buildAdjust(userDisplayName, previous.getGeneratedContent(), adjustmentInstruction);
-        String raw = aiClient.complete(prompt.systemPrompt(), prompt.userPrompt(),
-                appProperties.getAi().getModel(), true);
+        String raw = aiClient.complete(aiSettingsService.current(), prompt.systemPrompt(), prompt.userPrompt(), true);
         ReplyAiResult result = aiResponseParser.parseReply(raw);
 
         GeneratedReply reply = new GeneratedReply();

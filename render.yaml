@@ -27,11 +27,16 @@ services:
       # --- Base64 AES key: `openssl rand -base64 32`. Never change it once set.
       - key: TOKEN_ENCRYPTION_KEY
         sync: false
-      # --- AI
-      - key: OPENROUTER_API_KEY
+      # --- AI defaults (the admin can change all of this in Settings → AI provider)
+      - key: AI_PROVIDER
+        value: openrouter
+      - key: AI_API_KEY
         sync: false
       - key: AI_MODEL
         value: openai/gpt-4o-mini
+      # --- Optional: pin the admin (else the first account to sign in is admin)
+      - key: ADMIN_EMAILS
+        sync: false
       # --- Cookies: same origin over https
       - key: COOKIE_SECURE
         value: "true"

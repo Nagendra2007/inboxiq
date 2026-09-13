@@ -50,7 +50,7 @@ powershell -ExecutionPolicy Bypass -File scripts\prepare-render-env.ps1
 It reads the Neon string from the clipboard (or asks for it, with hidden input). The script:
 
 - converts it to `DATABASE_URL` / `DATABASE_USERNAME` / `DATABASE_PASSWORD` (switching a pooled host to the direct one),
-- copies `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `OPENROUTER_API_KEY` and `AI_MODEL` from `backend/.env`,
+- copies `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and the AI defaults (`AI_PROVIDER`, `AI_API_KEY`, `AI_MODEL`) from `backend/.env`,
 - generates a production `TOKEN_ENCRYPTION_KEY` (once — later runs reuse it; changing it would force every user to reconnect Gmail),
 - adds `COOKIE_SECURE=true` and `COOKIE_SAME_SITE=Lax`,
 - saves everything to `.env.render` (git-ignored) and **copies it to your clipboard**. No secret is printed.
@@ -62,7 +62,8 @@ It reads the Neon string from the clipboard (or asks for it, with hidden input).
 |---|---|
 | `DATABASE_URL` | `jdbc:postgresql://<host>/<dbname>?sslmode=require` (from the Neon string) |
 | `DATABASE_USERNAME`, `DATABASE_PASSWORD` | From the Neon string |
-| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `OPENROUTER_API_KEY` | Same as `backend/.env` |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Same as `backend/.env` |
+| `AI_PROVIDER`, `AI_API_KEY`, `AI_MODEL` | e.g. `openrouter`, your OpenRouter key, `openai/gpt-4o-mini` (changeable later in the app) |
 | `TOKEN_ENCRYPTION_KEY` | `openssl rand -base64 32`, or in PowerShell: `$b = New-Object byte[] 32; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); [Convert]::ToBase64String($b)` |
 | `COOKIE_SECURE` | `true` |
 
@@ -95,6 +96,19 @@ Testing-mode limit: Google expires refresh tokens for Gmail scopes after **7 day
 
 Open `https://<your-render-url>`, click **Continue with Google**, approve, and you land in your inbox while the first sync runs. After 15 idle minutes the free instance sleeps; the next visit shows "Waking up InboxIQ…" and retries by itself.
 
+## Changing the AI provider, model or key
+
+No redeploy needed. Signed in as the administrator, open **Settings → AI provider**:
+
+1. Pick the provider — OpenRouter, OpenAI, Google Gemini, Anthropic (Claude), Groq, DeepSeek, Mistral, or **Custom** for any other OpenAI-compatible endpoint.
+2. Type the model (suggestions are offered; any model the provider supports works).
+3. Paste the API key — or leave it blank to keep the saved key (or, for the same provider, the environment's).
+4. **Test connection**, then **Save changes**. Everyone's summaries and drafts use it from the next request. **Reset to defaults** returns to the `AI_*` environment variables.
+
+Keys saved here are encrypted with `TOKEN_ENCRYPTION_KEY` and never sent back to the browser (only their last four characters).
+
+**Who is the administrator?** The accounts listed in `ADMIN_EMAILS` (comma-separated). If that isn't set, the first account that signed in to this deployment is the administrator. Set `ADMIN_EMAILS` if you want to pin it or add someone.
+
 ## Troubleshooting
 
 | Symptom | Likely cause |
@@ -104,7 +118,7 @@ Open `https://<your-render-url>`, click **Continue with Google**, approve, and y
 | After Google sign-in you're back on the sign-in page | A custom domain is in use: set `FRONTEND_URL`, `CORS_ALLOWED_ORIGINS` and `GOOGLE_REDIRECT_URI` to it explicitly. |
 | App crashes on start: *TOKEN_ENCRYPTION_KEY* | Missing, or not Base64 of 16/24/32 bytes — rerun the script from step 3. |
 | App crashes on start: database connection | Wrong `DATABASE_*` values, or the pooled Neon host — rerun step 3 with the direct connection string. |
-| AI summaries never appear ("AI analysis is temporarily unavailable") | `OPENROUTER_API_KEY` missing/invalid or `AI_MODEL` isn't a valid OpenRouter model slug. Check Render's **Logs**. |
+| AI summaries never appear, or "out of credits" / "rejected the API key" | Open **Settings → AI provider → Test connection** — it shows the provider's own explanation. Top up credits, fix the key, or switch provider/model there. |
 | Out-of-memory restarts on the free plan | Add `JAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=60 -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError`. |
 
 ## Other hosts

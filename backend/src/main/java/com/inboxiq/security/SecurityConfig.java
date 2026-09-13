@@ -200,10 +200,13 @@ public class SecurityConfig {
 
         @Override
         public String resolveCsrfTokenValue(HttpServletRequest request, CsrfToken csrfToken) {
+            // Header: the SPA echoes the raw cookie value. Otherwise (a form
+            // field) the value is the BREACH-masked token, so unmask it —
+            // Spring Security's reference SPA handler does the same.
             String headerValue = request.getHeader(csrfToken.getHeaderName());
             return StringUtils.hasText(headerValue)
-                    ? headerValue
-                    : super.resolveCsrfTokenValue(request, csrfToken);
+                    ? super.resolveCsrfTokenValue(request, csrfToken)
+                    : this.delegate.resolveCsrfTokenValue(request, csrfToken);
         }
     }
 

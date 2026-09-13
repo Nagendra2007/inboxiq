@@ -45,7 +45,7 @@ InboxIQ is an AI-powered Gmail intelligence and writing assistant. It connects t
 
 **Frontend:** React 18, TypeScript, Vite, Tailwind CSS, React Router. No UI library — a small in-house set of accessible primitives (dialogs with focus trapping, toasts, buttons, checkboxes) lives in `frontend/src/components/ui`.
 
-**AI:** any [OpenRouter](https://openrouter.ai)-compatible model, configured entirely via the `AI_MODEL` environment variable — never hardcoded.
+**AI:** any OpenAI-compatible provider — OpenRouter, OpenAI, Google Gemini, Anthropic (Claude), Groq, DeepSeek, Mistral, or a custom endpoint. The administrator switches provider, model and API key in the app (**Settings → AI provider**) for all users at once, with no redeploy; the `AI_PROVIDER` / `AI_API_KEY` / `AI_MODEL` environment variables are the defaults.
 
 ### Why Angus Mail is in a Gmail-API project
 
@@ -199,7 +199,9 @@ Deliberately **not requested**: `mail.google.com` (full account access, includin
 
 ## AI pipeline & cost optimization
 
-Each email is analyzed with **one** combined LLM call (`EmailAnalysisPrompt`) that returns summary, category, a priority hint, a risk assessment, action items, and important dates together — not five separate calls. The model is read from `AI_MODEL` (with an optional cheaper `AI_FAST_MODEL` for lightweight tasks) and is never hardcoded. The composer's quick-adjustment buttons (Make shorter/formal/friendly, Regenerate) are classified locally by `AssistantCommandService` using simple text heuristics — routing a button click doesn't cost a model call, only executing the resulting rewrite does.
+Each email is analyzed with **one** combined LLM call (`EmailAnalysisPrompt`) that returns summary, category, a priority hint, a risk assessment, action items, and important dates together — not five separate calls. Responses are capped at `AI_MAX_OUTPUT_TOKENS` (default 1500), which also stops providers like OpenRouter from reserving credit for a model's maximum output on every call.
+
+**Switching providers.** Every supported provider speaks the OpenAI-style `/chat/completions` API, so one client (`OpenAiCompatibleClient`) serves them all; `AiSettingsService` resolves which provider, key and model apply — the administrator's saved choice (table `ai_settings`, key encrypted with `TOKEN_ENCRYPTION_KEY`), else the `AI_*` environment variables. The client smooths over provider quirks: OpenAI gets `max_completion_tokens`, and a model that rejects `temperature` or JSON mode is retried once without it. Provider errors surface as specific messages ("out of credits", "rejected the API key", "doesn't recognise the model"), and **Test connection** in Settings shows the provider's own explanation. Administrators are the accounts in `ADMIN_EMAILS`, or — when that's unset — the first account created on the deployment. The composer's quick-adjustment buttons (Make shorter/formal/friendly, Regenerate) are classified locally by `AssistantCommandService` using simple text heuristics — routing a button click doesn't cost a model call, only executing the resulting rewrite does.
 
 If the AI call fails (provider down, missing key, malformed response), analysis does not silently disappear: `AiResponseParser` defensively coerces whatever came back, and if the response can't be parsed as JSON at all, `EmailAnalysisService` falls back to rule-based signals only and marks the row `FAILED` with a safe reason — the email stays fully usable.
 
@@ -307,6 +309,10 @@ npm run build   # type-checks (tsc -b) then produces dist/
 | GET | `/api/dashboard` | Inbox statistics |
 | GET | `/api/action-items` | Paginated action items |
 | PATCH | `/api/action-items/{id}` | Toggle completed |
+| GET | `/api/admin/ai-settings` | App-wide AI provider/model (admin only; key shown as last 4 chars) |
+| PUT | `/api/admin/ai-settings` | Change provider, model and/or key for everyone (admin only) |
+| DELETE | `/api/admin/ai-settings` | Reset to the `AI_*` environment defaults (admin only) |
+| POST | `/api/admin/ai-settings/test` | Try unsaved settings with a one-word prompt (admin only) |
 
 ## Privacy & data deletion
 

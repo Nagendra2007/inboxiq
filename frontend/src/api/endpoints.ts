@@ -2,6 +2,9 @@ import { apiFetch, LONG_TIMEOUT_MS } from './client';
 import type {
   ActionItemDto,
   AdjustButton,
+  AiSettingsDto,
+  AiTestResult,
+  UpdateAiSettingsRequest,
   Category,
   DashboardDto,
   EmailDetailDto,
@@ -111,6 +114,19 @@ export const ComposeApi = {
       method: 'POST',
       body: { draftId, finalBodyText, toAddress, subject },
     }),
+};
+
+// --- Admin: app-wide AI provider ---
+export const AdminApi = {
+  aiSettings: () => apiFetch<AiSettingsDto>('/api/admin/ai-settings'),
+
+  saveAiSettings: (body: UpdateAiSettingsRequest) =>
+    apiFetch<AiSettingsDto>('/api/admin/ai-settings', { method: 'PUT', body }),
+
+  resetAiSettings: () => apiFetch<AiSettingsDto>('/api/admin/ai-settings', { method: 'DELETE' }),
+
+  testAiSettings: (body: UpdateAiSettingsRequest) =>
+    apiFetch<AiTestResult>('/api/admin/ai-settings/test', { method: 'POST', body, timeoutMs: LONG_TIMEOUT_MS }),
 };
 
 // --- Action items ---

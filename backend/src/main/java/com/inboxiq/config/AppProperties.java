@@ -18,6 +18,15 @@ public class AppProperties {
     private final Gmail gmail = new Gmail();
     private final Sync sync = new Sync();
     private final RateLimit rateLimit = new RateLimit();
+    /**
+     * Comma-separated Google account emails allowed to change app-wide
+     * settings (the AI provider). When empty, the first account created on
+     * the deployment is the administrator — see AdminAccess.
+     */
+    private String adminEmails = "";
+
+    public String getAdminEmails() { return adminEmails; }
+    public void setAdminEmails(String adminEmails) { this.adminEmails = adminEmails == null ? "" : adminEmails; }
 
     public Frontend getFrontend() { return frontend; }
     public Security getSecurity() { return security; }
@@ -61,9 +70,14 @@ public class AppProperties {
         public void setCookieSecure(boolean cookieSecure) { this.cookieSecure = cookieSecure; }
     }
 
+    /**
+     * Environment defaults for AI. The administrator can override all of it
+     * in the app (Settings → AI provider); see AiSettingsService.
+     */
     public static class Ai {
         private String provider = "openrouter";
-        private String baseUrl = "https://openrouter.ai/api/v1";
+        /** Blank means the provider's standard endpoint (required for "custom"). */
+        private String baseUrl = "";
         private String apiKey;
         private String model;
         private String fastModel;

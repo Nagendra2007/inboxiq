@@ -14,6 +14,45 @@ export interface UserDto {
   email: string;
   name: string | null;
   gmailConnected: boolean;
+  /** May change app-wide settings (the AI provider). */
+  admin: boolean;
+}
+
+export interface AiProviderOption {
+  id: string;
+  label: string;
+  keyUrl: string | null;
+  suggestedModels: string[];
+  requiresBaseUrl: boolean;
+}
+
+/** App-wide AI configuration as shown to the admin — never includes the key itself. */
+export interface AiSettingsDto {
+  provider: string;
+  providerLabel: string;
+  model: string | null;
+  baseUrl: string | null;
+  hasApiKey: boolean;
+  apiKeyHint: string | null;
+  usingEnvironmentKey: boolean;
+  source: 'APP' | 'ENVIRONMENT';
+  updatedBy: string | null;
+  updatedAt: string | null;
+  environmentDefault: { provider: string; providerLabel: string; model: string | null; hasApiKey: boolean };
+  providers: AiProviderOption[];
+}
+
+export interface UpdateAiSettingsRequest {
+  provider: string;
+  model: string;
+  apiKey?: string;
+  baseUrl?: string;
+}
+
+export interface AiTestResult {
+  ok: boolean;
+  message: string;
+  latencyMs: number;
 }
 
 export interface EmailAnalysisDto {

@@ -8,6 +8,7 @@ import { Avatar } from '../components/ui/Avatar';
 import { Button } from '../components/ui/Button';
 import { ConfirmDialog } from '../components/ui/Dialog';
 import { useToast } from '../components/ui/Toast';
+import { AiSettingsSection } from '../components/AiSettingsSection';
 import {
   DatabaseIcon,
   EyeIcon,
@@ -172,6 +173,8 @@ export function SettingsPage() {
             )}
           </div>
         </Section>
+
+        {user.admin && <AiSettingsSection />}
 
         <Section title="Keyboard shortcuts" description="Move through your inbox without touching the mouse.">
           <Button variant="secondary" onClick={openShortcuts} icon={<KeyboardIcon className="h-4 w-4" />}>

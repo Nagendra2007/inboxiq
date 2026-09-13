@@ -4,6 +4,7 @@ import com.inboxiq.dto.UserDto;
 import com.inboxiq.entity.MailProvider;
 import com.inboxiq.entity.User;
 import com.inboxiq.repository.MailAccountRepository;
+import com.inboxiq.security.AdminAccess;
 import com.inboxiq.security.CurrentUserProvider;
 import com.inboxiq.service.PrivacyService;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -28,20 +29,23 @@ public class AuthController {
     private final CurrentUserProvider currentUserProvider;
     private final MailAccountRepository mailAccountRepository;
     private final PrivacyService privacyService;
+    private final AdminAccess adminAccess;
 
     public AuthController(CurrentUserProvider currentUserProvider,
                            MailAccountRepository mailAccountRepository,
-                           PrivacyService privacyService) {
+                           PrivacyService privacyService,
+                           AdminAccess adminAccess) {
         this.currentUserProvider = currentUserProvider;
         this.mailAccountRepository = mailAccountRepository;
         this.privacyService = privacyService;
+        this.adminAccess = adminAccess;
     }
 
     @GetMapping("/me")
     public UserDto me() {
         User user = currentUserProvider.getCurrentUser();
         boolean connected = mailAccountRepository.findByUserIdAndProviderAndActiveTrue(user.getId(), MailProvider.GOOGLE).isPresent();
-        return new UserDto(user.getId(), user.getEmail(), user.getName(), connected);
+        return new UserDto(user.getId(), user.getEmail(), user.getName(), connected, adminAccess.isAdmin(user));
     }
 
     /** Revokes/clears stored Gmail tokens; previously synced data is kept. */

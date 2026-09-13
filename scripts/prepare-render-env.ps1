@@ -4,7 +4,7 @@
   them to the clipboard, ready for Render's "Add from .env".
 
 .DESCRIPTION
-  - Reads your Google OAuth and OpenRouter keys from backend\.env
+  - Reads your Google OAuth keys and AI defaults from backend\.env
   - Takes your Neon connection string from the clipboard (or asks for it,
     input hidden) and converts it to the JDBC settings Spring Boot expects,
     switching a pooled Neon host to the direct one
@@ -38,9 +38,12 @@ if (-not (Test-Path $localEnvPath)) {
     throw "backend\.env not found. Copy backend\.env.example to backend\.env and fill it in first."
 }
 $local = Read-EnvFile $localEnvPath
-foreach ($key in 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'OPENROUTER_API_KEY') {
+# AI_API_KEY is the current name; OPENROUTER_API_KEY is still accepted.
+$aiKey = if ($local['AI_API_KEY']) { $local['AI_API_KEY'] } else { $local['OPENROUTER_API_KEY'] }
+foreach ($key in 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET') {
     if (-not $local[$key]) { throw "$key is empty in backend\.env - fill it in and run this again." }
 }
+if (-not $aiKey) { throw "AI_API_KEY is empty in backend\.env - fill it in and run this again." }
 $previous = Read-EnvFile $outputPath
 
 # --- Neon connection string -> JDBC settings -------------------------------
@@ -92,9 +95,11 @@ $lines.Add("DATABASE_USERNAME=$dbUser")
 $lines.Add("DATABASE_PASSWORD=$dbPassword")
 $lines.Add("GOOGLE_CLIENT_ID=$($local['GOOGLE_CLIENT_ID'])")
 $lines.Add("GOOGLE_CLIENT_SECRET=$($local['GOOGLE_CLIENT_SECRET'])")
-$lines.Add("OPENROUTER_API_KEY=$($local['OPENROUTER_API_KEY'])")
+$lines.Add("AI_PROVIDER=$(if ($local['AI_PROVIDER']) { $local['AI_PROVIDER'] } else { 'openrouter' })")
+$lines.Add("AI_API_KEY=$aiKey")
 $lines.Add("AI_MODEL=$(if ($local['AI_MODEL']) { $local['AI_MODEL'] } else { 'openai/gpt-4o-mini' })")
-if ($local['AI_FAST_MODEL']) { $lines.Add("AI_FAST_MODEL=$($local['AI_FAST_MODEL'])") }
+if ($local['AI_BASE_URL']) { $lines.Add("AI_BASE_URL=$($local['AI_BASE_URL'])") }
+if ($local['ADMIN_EMAILS']) { $lines.Add("ADMIN_EMAILS=$($local['ADMIN_EMAILS'])") }
 $lines.Add("TOKEN_ENCRYPTION_KEY=$tokenKey")
 $lines.Add('COOKIE_SECURE=true')
 $lines.Add('COOKIE_SAME_SITE=Lax')

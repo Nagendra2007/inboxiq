@@ -149,13 +149,21 @@ app:
     cookie-secure: ${COOKIE_SECURE:false}
     session-max-age-seconds: 604800 # 7 days
 
+  # Who may change app-wide settings (Settings → AI provider): comma-separated
+  # Google account emails. Empty = the first account created on this deployment.
+  admin-emails: ${ADMIN_EMAILS:}
+
+  # Default AI configuration. The administrator can switch provider, model and
+  # key in the app at any time (Settings → AI provider) without a redeploy;
+  # these values apply until they do, and after "Reset to defaults".
   ai:
-    provider: openrouter
-    base-url: ${OPENROUTER_BASE_URL:https://openrouter.ai/api/v1}
-    api-key: ${OPENROUTER_API_KEY:}
-    # Model used for the combined analysis pass (summary + priority signal +
-    # risk + categorize + action items) and for reply generation. Keep this
-    # configurable so the model can be swapped without a code change.
+    # openrouter | openai | gemini | anthropic | groq | deepseek | mistral | custom
+    provider: ${AI_PROVIDER:openrouter}
+    # Blank = the provider's standard endpoint. Required for "custom".
+    # (OPENROUTER_* names are still accepted for existing deployments.)
+    base-url: ${AI_BASE_URL:${OPENROUTER_BASE_URL:}}
+    api-key: ${AI_API_KEY:${OPENROUTER_API_KEY:}}
+    # Used for the combined analysis pass and for reply generation.
     model: ${AI_MODEL:openai/gpt-4o-mini}
     # Optional cheaper/faster model for trivial classification-only calls.
     # Falls back to `model` when unset.

@@ -290,7 +290,14 @@ export const ServerIcon = (p: IconProps) => (
   </Svg>
 );
 
-export const GoogleIcon = ({ className = 'h-5 w-5' }: { className?: string }) => (
+export const ExternalLinkIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M15 3h6v6M10 14 21 3" />
+    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+  </Svg>
+);
+
+export const GoogleIcon =({ className = 'h-5 w-5' }: { className?: string }) => (
   <svg viewBox="0 0 24 24" className={className} aria-hidden="true" focusable="false">
     <path fill="#4285F4" d="M23.52 12.27c0-.82-.07-1.42-.22-2.05H12v3.72h6.51c-.13 1.03-.85 2.6-2.44 3.65l-.02.15 3.55 2.7.25.02c2.26-2.06 3.66-5.1 3.66-8.19z" />
     <path fill="#34A853" d="M12 24c3.24 0 5.95-1.05 7.94-2.86l-3.78-2.87c-1.01.7-2.38 1.19-4.16 1.19-3.17 0-5.86-2.06-6.82-4.92l-.14.01-3.68 2.79-.05.13C3.33 21.3 7.35 24 12 24z" />

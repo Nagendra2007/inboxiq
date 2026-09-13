@@ -1,11 +1,11 @@
 package com.inboxiq.service;
 
 import com.inboxiq.ai.AiClient;
+import com.inboxiq.ai.AiConfig;
 import com.inboxiq.ai.AiResponseParser;
 import com.inboxiq.ai.dto.EmailAnalysisAiResult;
 import com.inboxiq.ai.prompt.EmailAnalysisPrompt;
 import com.inboxiq.ai.prompt.PromptPair;
-import com.inboxiq.config.AppProperties;
 import com.inboxiq.entity.ActionItem;
 import com.inboxiq.entity.AnalysisStatus;
 import com.inboxiq.entity.EmailAnalysis;
@@ -53,7 +53,7 @@ public class EmailAnalysisService {
     private final AiResponseParser aiResponseParser;
     private final PriorityEngine priorityEngine;
     private final RiskRuleEngine riskRuleEngine;
-    private final AppProperties appProperties;
+    private final AiSettingsService aiSettingsService;
     private final EmailAnalysisRepository emailAnalysisRepository;
     private final ActionItemRepository actionItemRepository;
     private final EmailRepository emailRepository;
@@ -64,7 +64,7 @@ public class EmailAnalysisService {
                                  AiResponseParser aiResponseParser,
                                  PriorityEngine priorityEngine,
                                  RiskRuleEngine riskRuleEngine,
-                                 AppProperties appProperties,
+                                 AiSettingsService aiSettingsService,
                                  EmailAnalysisRepository emailAnalysisRepository,
                                  ActionItemRepository actionItemRepository,
                                  EmailRepository emailRepository,
@@ -74,7 +74,7 @@ public class EmailAnalysisService {
         this.aiResponseParser = aiResponseParser;
         this.priorityEngine = priorityEngine;
         this.riskRuleEngine = riskRuleEngine;
-        this.appProperties = appProperties;
+        this.aiSettingsService = aiSettingsService;
         this.emailAnalysisRepository = emailAnalysisRepository;
         this.actionItemRepository = actionItemRepository;
         this.emailRepository = emailRepository;
@@ -113,13 +113,14 @@ public class EmailAnalysisService {
 
         try {
             PromptPair prompt = EmailAnalysisPrompt.build(email.getSender(), email.getSubject(), bodyForAnalysis);
-            String raw = aiClient.complete(prompt.systemPrompt(), prompt.userPrompt(), appProperties.getAi().getModel(), true);
+            AiConfig ai = aiSettingsService.current();
+            String raw = aiClient.complete(ai, prompt.systemPrompt(), prompt.userPrompt(), true);
             EmailAnalysisAiResult aiResult = aiResponseParser.parseAnalysis(raw);
 
             applyAiResult(analysis, aiResult, ruleRisk, email.getSubject(), bodyForAnalysis);
             analysis.setAnalysisStatus(AnalysisStatus.COMPLETED);
             analysis.setFailureReason(null);
-            analysis.setAiModelUsed(appProperties.getAi().getModel());
+            analysis.setAiModelUsed(truncate(ai.model(), 128));
 
             // One short transaction for the analysis row plus its action
             // items (joins the caller's transaction when there is one). The
