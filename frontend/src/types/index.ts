@@ -18,6 +18,12 @@ export interface UserDto {
   admin: boolean;
 }
 
+/** Who the administrators are, and which rule decided it. */
+export interface AdministratorsDto {
+  source: 'ADMIN_EMAILS' | 'FIRST_ACCOUNT';
+  admins: { email: string; signedIn: boolean }[];
+}
+
 export interface AiProviderOption {
   id: string;
   label: string;

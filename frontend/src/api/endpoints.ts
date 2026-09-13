@@ -2,6 +2,7 @@ import { apiFetch, LONG_TIMEOUT_MS } from './client';
 import type {
   ActionItemDto,
   AdjustButton,
+  AdministratorsDto,
   AiSettingsDto,
   AiTestResult,
   UpdateAiSettingsRequest,
@@ -118,6 +119,8 @@ export const ComposeApi = {
 
 // --- Admin: app-wide AI provider ---
 export const AdminApi = {
+  administrators: () => apiFetch<AdministratorsDto>('/api/admin/administrators'),
+
   aiSettings: () => apiFetch<AiSettingsDto>('/api/admin/ai-settings'),
 
   saveAiSettings: (body: UpdateAiSettingsRequest) =>

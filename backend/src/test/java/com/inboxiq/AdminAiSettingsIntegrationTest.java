@@ -77,6 +77,16 @@ class AdminAiSettingsIntegrationTest {
     }
 
     @Test
+    void onlyTheAdministratorCanSeeWhoTheAdministratorsAre() throws Exception {
+        mvc.perform(get("/api/admin/administrators").with(as(MEMBER))).andExpect(status().isForbidden());
+        mvc.perform(get("/api/admin/administrators").with(as(ADMIN)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.source").value("ADMIN_EMAILS"))
+                .andExpect(jsonPath("$.admins[0].email").value(ADMIN))
+                .andExpect(jsonPath("$.admins[0].signedIn").value(true));
+    }
+
+    @Test
     void defaultsComeFromTheEnvironment() throws Exception {
         mvc.perform(get("/api/admin/ai-settings").with(as(ADMIN)))
                 .andExpect(status().isOk())

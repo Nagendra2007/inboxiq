@@ -1,6 +1,7 @@
 package com.inboxiq.security;
 
 import com.inboxiq.config.AppProperties;
+import com.inboxiq.dto.AdministratorsDto;
 import com.inboxiq.entity.User;
 import com.inboxiq.repository.UserRepository;
 import org.junit.jupiter.api.Test;
@@ -40,5 +41,29 @@ class AdminAccessTest {
 
         assertThat(adminAccess.isAdmin(first)).isTrue();
         assertThat(adminAccess.isAdmin(user("later@example.com"))).isFalse();
+    }
+
+    @Test
+    void describeListsConfiguredAdminsAndWhetherTheyHaveSignedIn() {
+        properties.setAdminEmails("owner@example.com, Pending@example.com");
+        when(userRepository.existsByEmailIgnoreCase("owner@example.com")).thenReturn(true);
+        when(userRepository.existsByEmailIgnoreCase("pending@example.com")).thenReturn(false);
+
+        AdministratorsDto admins = adminAccess.describe();
+
+        assertThat(admins.source()).isEqualTo("ADMIN_EMAILS");
+        assertThat(admins.admins()).containsExactly(
+                new AdministratorsDto.Admin("owner@example.com", true),
+                new AdministratorsDto.Admin("pending@example.com", false));
+    }
+
+    @Test
+    void describeFallsBackToTheFirstAccount() {
+        when(userRepository.findFirstByOrderByCreatedAtAscIdAsc()).thenReturn(Optional.of(user("first@example.com")));
+
+        AdministratorsDto admins = adminAccess.describe();
+
+        assertThat(admins.source()).isEqualTo("FIRST_ACCOUNT");
+        assertThat(admins.admins()).containsExactly(new AdministratorsDto.Admin("first@example.com", true));
     }
 }
