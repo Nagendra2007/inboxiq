@@ -69,6 +69,11 @@ public class AppProperties {
         private String fastModel;
         private int requestTimeoutSeconds = 30;
         private int maxRetries = 2;
+        // Upper bound on each response's length. Without one, OpenRouter
+        // reserves credit for the model's maximum output (16k tokens for
+        // gpt-4o-mini) on every call, which fails with HTTP 402 on a
+        // low-balance account even though real responses are tiny.
+        private int maxOutputTokens = 1500;
 
         public String getProvider() { return provider; }
         public void setProvider(String provider) { this.provider = provider; }
@@ -88,6 +93,8 @@ public class AppProperties {
         public void setRequestTimeoutSeconds(int requestTimeoutSeconds) { this.requestTimeoutSeconds = requestTimeoutSeconds; }
         public int getMaxRetries() { return maxRetries; }
         public void setMaxRetries(int maxRetries) { this.maxRetries = maxRetries; }
+        public int getMaxOutputTokens() { return maxOutputTokens; }
+        public void setMaxOutputTokens(int maxOutputTokens) { this.maxOutputTokens = maxOutputTokens; }
     }
 
     public static class Gmail {

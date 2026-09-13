@@ -25,9 +25,10 @@ import java.util.List;
  * configurable at the environment-variable level ({@code AI_MODEL}) instead
  * of being baked into this class.
  *
- * No API key is ever logged; failures log only the HTTP status and a short
- * classification, never the request or response body (which could contain
- * email content).
+ * No API key is ever logged; failures log only the HTTP status and the
+ * provider's one-line {@code error.message} (e.g. "requires more credits"),
+ * never the request or the full response body (which could contain email
+ * content).
  */
 @Component
 public class OpenRouterClient implements AiClient {
@@ -63,15 +64,18 @@ public class OpenRouterClient implements AiClient {
                     "AI_MODEL is not configured. Set it in your .env (e.g. openai/gpt-4o-mini).");
         }
 
+        int maxOutputTokens = appProperties.getAi().getMaxOutputTokens();
         ChatRequest request = new ChatRequest(
                 effectiveModel,
                 List.of(new ChatMessage("system", systemPrompt), new ChatMessage("user", userPrompt)),
                 jsonResponse ? new ResponseFormat("json_object") : null,
-                0.3
+                0.3,
+                maxOutputTokens > 0 ? maxOutputTokens : null
         );
 
+        String rawBody;
         try {
-            String rawBody = webClient.post()
+            rawBody = webClient.post()
                     .uri("/chat/completions")
                     .header(HttpHeaders.AUTHORIZATION, "Bearer " + apiKey)
                     .bodyValue(request)
@@ -81,15 +85,55 @@ public class OpenRouterClient implements AiClient {
                     .retryWhen(Retry.backoff(appProperties.getAi().getMaxRetries(), Duration.ofSeconds(1))
                             .filter(this::isRetryable))
                     .block();
-
-            return extractContent(rawBody);
-
-        } catch (WebClientResponseException e) {
-            log.error("OpenRouter request failed with HTTP {}", e.getStatusCode().value());
-            throw new AiServiceException("The AI service returned an error. Please try again.", e);
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
+            // After retries are exhausted Reactor wraps the last failure, so
+            // look through the cause chain for the provider's HTTP error.
+            WebClientResponseException httpError = findHttpError(e);
+            if (httpError != null) {
+                int status = httpError.getStatusCode().value();
+                log.error("OpenRouter request failed with HTTP {}: {}", status, providerMessage(httpError));
+                throw new AiServiceException(messageForStatus(status), httpError);
+            }
             log.error("OpenRouter request failed", e);
             throw new AiServiceException("Could not reach the AI service. Please try again.", e);
+        }
+
+        return extractContent(rawBody);
+    }
+
+    /** User-facing message for an OpenRouter error status — specific enough to act on. */
+    private static String messageForStatus(int status) {
+        return switch (status) {
+            case 401 -> "AI is unavailable: the OpenRouter API key was rejected (check OPENROUTER_API_KEY).";
+            case 402 -> "AI is unavailable: the OpenRouter account is out of credits. Add credits at openrouter.ai, or set AI_MODEL to a free model.";
+            case 403 -> "The AI provider declined this request.";
+            case 404 -> "AI is unavailable: the configured AI_MODEL wasn't found on OpenRouter.";
+            case 408, 429 -> "The AI provider is busy right now. Please try again in a minute.";
+            case 400 -> "The AI provider couldn't process this request (check that AI_MODEL supports it).";
+            default -> "The AI service returned an error. Please try again.";
+        };
+    }
+
+    private static WebClientResponseException findHttpError(Throwable throwable) {
+        for (Throwable t = throwable; t != null; t = t.getCause()) {
+            if (t instanceof WebClientResponseException wcre) return wcre;
+            if (t.getCause() == t) break;
+        }
+        return null;
+    }
+
+    /**
+     * OpenRouter's own one-line explanation (e.g. "requires more credits"),
+     * for the server log. Only {@code error.message} is extracted — never the
+     * request, and never the full body — and it is truncated.
+     */
+    private String providerMessage(WebClientResponseException e) {
+        try {
+            String message = objectMapper.readTree(e.getResponseBodyAsString()).path("error").path("message").asText("");
+            if (message.isBlank()) return "(no details)";
+            return message.length() > 300 ? message.substring(0, 300) + "…" : message;
+        } catch (Exception ignored) {
+            return "(no details)";
         }
     }
 
@@ -127,7 +171,8 @@ public class OpenRouterClient implements AiClient {
             String model,
             List<ChatMessage> messages,
             @JsonProperty("response_format") ResponseFormat responseFormat,
-            Double temperature
+            Double temperature,
+            @JsonProperty("max_tokens") Integer maxTokens
     ) {}
 
     private record ChatMessage(String role, String content) {}

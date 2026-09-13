@@ -162,6 +162,9 @@ app:
     fast-model: ${AI_FAST_MODEL:}
     request-timeout-seconds: 30
     max-retries: 2
+    # Cap on each AI response (summaries and drafts need far less). Also
+    # bounds the credit OpenRouter reserves per call — see AppProperties.
+    max-output-tokens: ${AI_MAX_OUTPUT_TOKENS:1500}
 
   gmail:
     # How many messages to pull per initial-sync page. Keep modest: each
