@@ -5,9 +5,9 @@
 
 .DESCRIPTION
   - Reads your Google OAuth and OpenRouter keys from backend\.env
-  - Asks for your Neon connection string (input hidden) and converts it to
-    the JDBC settings Spring Boot expects, switching a pooled Neon host to
-    the direct one
+  - Takes your Neon connection string from the clipboard (or asks for it,
+    input hidden) and converts it to the JDBC settings Spring Boot expects,
+    switching a pooled Neon host to the direct one
   - Generates a production TOKEN_ENCRYPTION_KEY once, and reuses it on
     later runs (changing it would lock users out of their stored Gmail tokens)
   - Writes .env.render at the repo root (git-ignored) and copies it to the
@@ -44,13 +44,21 @@ foreach ($key in 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'OPENROUTER_API_KEY
 $previous = Read-EnvFile $outputPath
 
 # --- Neon connection string -> JDBC settings -------------------------------
-Write-Host ''
-Write-Host 'Paste your Neon connection string and press Enter (it stays hidden).' -ForegroundColor Cyan
-Write-Host '  It looks like: postgresql://user:password@ep-xxxx.region.aws.neon.tech/neondb?sslmode=require'
-$secure = Read-Host 'Neon connection string' -AsSecureString
-$bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
-try { $neon = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr).Trim() }
-finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) }
+# Taken from the clipboard when you've just copied it from Neon; otherwise
+# asked for (hidden input).
+$clipboard = [string](Get-Clipboard -Raw)
+if ($clipboard -and $clipboard.Trim() -match '^postgres(?:ql)?://') {
+    $neon = $clipboard.Trim()
+    Write-Host 'Using the Neon connection string from your clipboard.' -ForegroundColor DarkGray
+} else {
+    Write-Host ''
+    Write-Host 'Paste your Neon connection string and press Enter (it stays hidden).' -ForegroundColor Cyan
+    Write-Host '  It looks like: postgresql://user:password@ep-xxxx.region.aws.neon.tech/neondb?sslmode=require'
+    $secure = Read-Host 'Neon connection string' -AsSecureString
+    $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
+    try { $neon = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr).Trim() }
+    finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) }
+}
 
 if ($neon -notmatch '^postgres(?:ql)?://([^:/?#]+):([^@]+)@([^/?#]+)/([^?#]+)') {
     throw "That doesn't look like a Postgres connection string (postgresql://user:password@host/database)."

@@ -41,13 +41,13 @@ No manual migration is needed — Flyway creates the schema on first startup.
 
 ## 3. Prepare the environment variables
 
-From the repo root, run:
+With the Neon connection string still on your clipboard, run from the repo root:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\prepare-render-env.ps1
 ```
 
-Paste the Neon connection string when asked (input is hidden). The script:
+It reads the Neon string from the clipboard (or asks for it, with hidden input). The script:
 
 - converts it to `DATABASE_URL` / `DATABASE_USERNAME` / `DATABASE_PASSWORD` (switching a pooled host to the direct one),
 - copies `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `OPENROUTER_API_KEY` and `AI_MODEL` from `backend/.env`,
