@@ -1,0 +1,26 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:inboxiq;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password: sa
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+  flyway:
+    enabled: false
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: test-client-id
+            client-secret: test-client-secret
+
+app:
+  security:
+    # Test-only key: Base64 of the 32 ASCII bytes "inboxiq-test-key-not-for-prod-32".
+    token-encryption-key: aW5ib3hpcS10ZXN0LWtleS1ub3QtZm9yLXByb2QtMzI=
+  ai:
+    api-key: test-key
+    model: test/model

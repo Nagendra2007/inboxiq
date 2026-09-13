@@ -1,0 +1,204 @@
+spring:
+  application:
+    name: inboxiq-backend
+
+  # Local runs (`mvn spring-boot:run` from backend/, or an IDE run from the
+  # repo root) pick up backend/.env automatically — no need to export each
+  # variable by hand. Real environment variables still take precedence, and
+  # the file is optional: containers and hosting platforms don't have one.
+  config:
+    import:
+      - optional:file:.env[.properties]
+      - optional:file:backend/.env[.properties]
+
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/inboxiq}
+    username: ${DATABASE_USERNAME:inboxiq}
+    password: ${DATABASE_PASSWORD:inboxiq}
+    hikari:
+      maximum-pool-size: 10
+
+  jpa:
+    hibernate:
+      # Schema is owned by Flyway migrations, not Hibernate. "validate" makes
+      # Hibernate check the entities match the real schema at startup instead
+      # of silently auto-altering a database that holds real user email data.
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: false
+        jdbc:
+          time_zone: UTC
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+
+  web:
+    resources:
+      # The SPA shell (index.html, favicon) must always be revalidated so a
+      # deploy is picked up immediately. Hashed bundles under /assets/** get a
+      # one-year immutable cache instead — see WebConfig.
+      cache:
+        cachecontrol:
+          no-cache: true
+
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID:}
+            client-secret: ${GOOGLE_CLIENT_SECRET:}
+            scope:
+              - openid
+              - email
+              - profile
+              # Least-privilege Gmail scopes:
+              #  - gmail.readonly: list/read messages & threads (inbox ingestion, analysis)
+              #  - gmail.send: send a reply after explicit user confirmation
+              #  - gmail.modify: lets InboxIQ's delete button move the message to
+              #    Trash in the user's real Gmail too (reversible — same as
+              #    Gmail's own trash icon), not just remove InboxIQ's local copy.
+              # Deliberately NOT using the full "mail.google.com" scope, which
+              # would also grant permanent, un-trash-able deletion and settings
+              # access we never need. See README "Gmail Permissions" section.
+              #
+              # NOTE: anyone who connected Gmail before this scope was added
+              # needs to reconnect (Settings > Disconnect, then Connect again)
+              # before deleting will trash the message in Gmail — their
+              # existing token was issued without gmail.modify.
+              - https://www.googleapis.com/auth/gmail.readonly
+              - https://www.googleapis.com/auth/gmail.send
+              - https://www.googleapis.com/auth/gmail.modify
+            authorization-grant-type: authorization_code
+            # On Render, RENDER_EXTERNAL_URL (the service's public https URL,
+            # injected by the platform) fills this in automatically.
+            redirect-uri: ${GOOGLE_REDIRECT_URI:${RENDER_EXTERNAL_URL:http://localhost:8080}/login/oauth2/code/google}
+            client-name: Google
+        provider:
+          google:
+            authorization-uri: https://accounts.google.com/o/oauth2/v2/auth
+            token-uri: https://oauth2.googleapis.com/token
+            user-info-uri: https://openidconnect.googleapis.com/v1/userinfo
+            user-name-attribute: sub
+            jwk-set-uri: https://www.googleapis.com/oauth2/v3/certs
+            # access_type=offline + prompt=consent are required to receive a
+            # refresh token (otherwise Google only issues a short-lived access
+            # token and background sync would stop working after ~1 hour).
+            authorization-uri-request-parameters:
+              access_type: offline
+              prompt: consent
+
+server:
+  # PORT is what Render/Railway/Fly/Heroku-style platforms inject.
+  port: ${PORT:${SERVER_PORT:8080}}
+  shutdown: graceful
+  # Behind a TLS-terminating load balancer, trust X-Forwarded-Proto/Host
+  # (only from private-network proxy IPs — Tomcat's RemoteIpValve default) so
+  # the app knows it's being served over https. Without this, same-origin
+  # POSTs look cross-origin to the CORS filter and HSTS is never sent.
+  forward-headers-strategy: ${FORWARD_HEADERS_STRATEGY:native}
+  compression:
+    enabled: true
+    mime-types: application/json,text/html,text/css,text/javascript,application/javascript,image/svg+xml
+    min-response-size: 1024
+  error:
+    include-message: never
+    include-binding-errors: never
+    include-stacktrace: never
+    include-exception: false
+  servlet:
+    session:
+      cookie:
+        name: INBOXIQ_SESSION
+        http-only: true
+        # "lax" is correct whenever the SPA and API share one origin — local
+        # dev (Vite proxy) and the single-service production image alike. Set
+        # COOKIE_SECURE=true in production (https). Only a split-domain
+        # deployment needs COOKIE_SAME_SITE=None, and browsers that block
+        # third-party cookies (Safari, Firefox) will still reject it — see
+        # DEPLOYMENT.md for why the single-origin setup is recommended.
+        same-site: ${COOKIE_SAME_SITE:lax}
+        secure: ${COOKIE_SECURE:false}
+      timeout: 7d
+
+app:
+  frontend:
+    # Where the browser is redirected after a successful/failed OAuth login.
+    # Falls back to Render's injected public URL, then to the Vite dev server.
+    base-url: ${FRONTEND_URL:${RENDER_EXTERNAL_URL:http://localhost:5173}}
+
+  security:
+    # 32-byte (or longer) key used to encrypt OAuth tokens at rest with
+    # AES-256-GCM before they ever touch the database. Generate one with:
+    #   openssl rand -base64 32
+    token-encryption-key: ${TOKEN_ENCRYPTION_KEY:}
+    # Comma-separated origins allowed to call the API with credentials.
+    cors-allowed-origins: ${CORS_ALLOWED_ORIGINS:${RENDER_EXTERNAL_URL:http://localhost:5173}}
+    session-cookie-name: INBOXIQ_SESSION
+    # Kept in lockstep with server.servlet.session.cookie.* above — the CSRF
+    # cookie needs the exact same SameSite/Secure treatment as the session
+    # cookie, or one of them silently stops reaching the backend cross-domain.
+    cookie-same-site: ${COOKIE_SAME_SITE:Lax}
+    cookie-secure: ${COOKIE_SECURE:false}
+    session-max-age-seconds: 604800 # 7 days
+
+  ai:
+    provider: openrouter
+    base-url: ${OPENROUTER_BASE_URL:https://openrouter.ai/api/v1}
+    api-key: ${OPENROUTER_API_KEY:}
+    # Model used for the combined analysis pass (summary + priority signal +
+    # risk + categorize + action items) and for reply generation. Keep this
+    # configurable so the model can be swapped without a code change.
+    model: ${AI_MODEL:openai/gpt-4o-mini}
+    # Optional cheaper/faster model for trivial classification-only calls.
+    # Falls back to `model` when unset.
+    fast-model: ${AI_FAST_MODEL:}
+    request-timeout-seconds: 30
+    max-retries: 2
+
+  gmail:
+    # How many messages to pull per initial-sync page. Keep modest: each
+    # message requires a follow-up get() call, and Gmail enforces per-user
+    # quota (250 quota units/sec by default).
+    initial-sync-page-size: 25
+    # A brand-new account's very first sync only pulls this many (fast,
+    # feels instant). Every sync after that pulls everything since they
+    # connected, up to the lifetime cap below.
+    first-sync-message-cap: ${FIRST_SYNC_MESSAGE_CAP:20}
+    max-total-synced-messages: ${MAX_TOTAL_SYNCED_MESSAGES:600}
+
+  sync:
+    # Guard against re-analyzing an unchanged email. See EmailAnalysisService.
+    reanalyze-if-stale: false
+
+  rate-limit:
+    ai-requests-per-minute-per-user: 20
+    gmail-sync-requests-per-minute-per-user: 6
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # Only ever expose health — never dump env/beans/heapdump publicly.
+        include: health
+  endpoint:
+    health:
+      show-details: never
+
+logging:
+  level:
+    root: INFO
+    com.inboxiq: INFO
+    org.springframework.security: WARN
+  pattern:
+    # Deliberately does not include request bodies/headers. Application code
+    # must never log tokens, email bodies, or API keys — see LoggingPolicy.md
+    # in the README "Security considerations" section.
+    console: "%d{yyyy-MM-dd HH:mm:ss} %-5level [%thread] %logger{36} - %msg%n"

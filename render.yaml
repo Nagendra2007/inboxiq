@@ -1,0 +1,39 @@
+# Render Blueprint — one web service running the root Dockerfile (API + UI on
+# a single origin). Postgres lives on Neon (see DEPLOYMENT.md). Values marked
+# `sync: false` are prompted for when you create the Blueprint in Render.
+services:
+  - type: web
+    name: inboxiq
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /actuator/health
+    autoDeploy: true
+    envVars:
+      # --- Database (Neon JDBC URL, e.g. jdbc:postgresql://<host>/<db>?sslmode=require)
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_USERNAME
+        sync: false
+      - key: DATABASE_PASSWORD
+        sync: false
+      # --- Google OAuth. The redirect URI, FRONTEND_URL and CORS origin are
+      # derived from RENDER_EXTERNAL_URL, which Render injects automatically.
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      # --- Base64 AES key: `openssl rand -base64 32`. Never change it once set.
+      - key: TOKEN_ENCRYPTION_KEY
+        sync: false
+      # --- AI
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: AI_MODEL
+        value: openai/gpt-4o-mini
+      # --- Cookies: same origin over https
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: COOKIE_SAME_SITE
+        value: Lax

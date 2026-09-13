@@ -1,0 +1,130 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+  html {
+    font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    @apply bg-ink-900 text-white/90;
+  }
+  ::selection {
+    @apply bg-accent-500/25 text-white;
+  }
+  /* Native dropdown popups don't reliably follow color-scheme on Windows;
+     without this, options inherit light text on a white popup. */
+  select option {
+    @apply bg-ink-700 text-white;
+  }
+  a:focus-visible,
+  button:focus-visible,
+  [role='button']:focus-visible,
+  [role='tab']:focus-visible,
+  summary:focus-visible {
+    @apply outline-none ring-2 ring-accent-500/70 ring-offset-2 ring-offset-ink-900;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 1ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 1ms !important;
+    }
+  }
+}
+
+@layer components {
+  /* Text inputs, selects and textareas share one field style. */
+  .field {
+    @apply w-full rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white/90 shadow-inset transition
+      placeholder:text-white/30 hover:border-white/15
+      focus:border-accent-500/70 focus:bg-white/[0.05] focus:outline-none focus:ring-2 focus:ring-accent-500/20
+      disabled:cursor-not-allowed disabled:opacity-60;
+  }
+  .field-label {
+    @apply mb-1.5 block text-xs font-medium text-white/50;
+  }
+  .card {
+    @apply rounded-2xl border border-white/[0.06] bg-ink-800 shadow-inset;
+  }
+  .kbd {
+    @apply inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded border border-white/10 bg-white/[0.04] px-1 font-sans text-[10px] font-semibold text-white/50;
+  }
+  .eyebrow {
+    @apply text-2xs font-semibold uppercase tracking-[0.08em] text-white/35;
+  }
+  .skeleton {
+    @apply relative block overflow-hidden rounded-md bg-white/[0.05];
+  }
+  .skeleton::after {
+    content: '';
+    @apply absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/[0.06] to-transparent;
+  }
+
+  /* Sanitized email HTML is rendered on a light "paper" surface: email
+     markup routinely hardcodes dark text colors that would vanish on the
+     app's dark background. */
+  .email-html {
+    @apply break-words text-[15px] leading-relaxed text-neutral-800;
+  }
+  .email-html a {
+    @apply text-blue-700 underline underline-offset-2;
+  }
+  .email-html p {
+    @apply mb-3;
+  }
+  .email-html ul {
+    @apply mb-3 list-disc pl-5;
+  }
+  .email-html ol {
+    @apply mb-3 list-decimal pl-5;
+  }
+  .email-html blockquote {
+    @apply border-l-2 border-neutral-300 pl-3 text-neutral-500;
+  }
+  .email-html table {
+    @apply max-w-full;
+  }
+  .email-html h1,
+  .email-html h2,
+  .email-html h3 {
+    @apply mb-2 font-semibold text-neutral-900;
+  }
+}
+
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-white/10;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    @apply bg-white/20;
+  }
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}

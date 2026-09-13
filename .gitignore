@@ -1,0 +1,18 @@
+# Secrets — never commit real environment files
+.env
+.env.*
+!.env.example
+
+# Build output
+node_modules/
+dist/
+target/
+
+# Local tooling
+.claude/
+.idea/
+.vscode/
+*.iml
+*.log
+.DS_Store
+Thumbs.db
