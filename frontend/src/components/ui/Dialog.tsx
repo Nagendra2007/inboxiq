@@ -100,7 +100,7 @@ export function Dialog({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-0 backdrop-blur-[2px] animate-fade-in sm:items-center sm:p-4"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-0 [.theme-light_&]:bg-black/30 backdrop-blur-[2px] animate-fade-in sm:items-center sm:p-4"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget && dismissibleRef.current) onCloseRef.current();
       }}

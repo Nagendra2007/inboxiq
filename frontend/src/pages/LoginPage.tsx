@@ -4,6 +4,7 @@ import { startGoogleLogin } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { Alert, Spinner } from '../components/ui/Feedback';
 import { Logo } from '../components/ui/Logo';
+import { ThemeSwitch } from '../components/ThemeToggle';
 import {
   AlertTriangleIcon,
   CheckIcon,
@@ -89,12 +90,17 @@ export function LoginPage() {
       {/* Ambient backdrop */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 opacity-[0.35] [background-image:linear-gradient(rgba(255,255,255,0.035)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.035)_1px,transparent_1px)] [background-size:48px_48px] [mask-image:radial-gradient(ellipse_at_30%_20%,black,transparent_70%)]"
+        className="pointer-events-none absolute inset-0 opacity-[0.35] [background-image:linear-gradient(rgb(var(--fg)/0.035)_1px,transparent_1px),linear-gradient(90deg,rgb(var(--fg)/0.035)_1px,transparent_1px)] [background-size:48px_48px] [mask-image:radial-gradient(ellipse_at_30%_20%,black,transparent_70%)]"
       />
       <div
         aria-hidden="true"
         className="pointer-events-none absolute -left-40 -top-40 h-[520px] w-[520px] rounded-full bg-accent-500/[0.07] blur-3xl"
       />
+
+      <div className="absolute right-5 top-5 z-10 flex items-center gap-2.5 text-xs font-medium text-white/45">
+        <span aria-hidden="true">Light mode</span>
+        <ThemeSwitch />
+      </div>
 
       <div className="relative mx-auto grid w-full max-w-6xl items-center gap-12 px-6 py-10 lg:grid-cols-[1.1fr_1fr] lg:px-10">
         {/* Story */}
@@ -178,6 +184,7 @@ export function LoginPage() {
             InboxIQ requests Gmail read, send and trash access. AI flags possibilities, not certainties — always use your
             judgment.
           </p>
+          <p className="mt-3 text-center text-xs text-white/30">Built by Team Syntrix</p>
         </div>
       </div>
     </div>

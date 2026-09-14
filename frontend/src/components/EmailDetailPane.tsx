@@ -530,7 +530,7 @@ export function EmailDetailPane({
             {showOriginal && (
               <div className="border-t border-white/[0.06] p-4 animate-fade-in">
                 {email.bodyHtml ? (
-                  <div className="overflow-x-auto rounded-xl bg-white px-5 py-4 shadow-inner">
+                  <div className="overflow-x-auto rounded-xl bg-paper px-5 py-4 shadow-inner ring-1 ring-white/[0.06]">
                     <div className="email-html" dangerouslySetInnerHTML={{ __html: email.bodyHtml }} />
                   </div>
                 ) : email.bodyText ? (

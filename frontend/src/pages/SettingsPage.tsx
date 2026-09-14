@@ -10,6 +10,7 @@ import { ConfirmDialog } from '../components/ui/Dialog';
 import { useToast } from '../components/ui/Toast';
 import { AiSettingsSection } from '../components/AiSettingsSection';
 import { AdministratorsSection } from '../components/AdministratorsSection';
+import { ThemeSwitch } from '../components/ThemeToggle';
 import {
   DatabaseIcon,
   EyeIcon,
@@ -184,6 +185,16 @@ export function SettingsPage() {
         {user.admin && <AiSettingsSection />}
         {user.admin && <AdministratorsSection currentEmail={user.email} />}
 
+        <Section title="Appearance">
+          <div className="flex items-center gap-4">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm text-white/85">Light mode</p>
+              <p className="mt-0.5 text-xs text-white/40">Use the light theme on this browser. Your choice is remembered.</p>
+            </div>
+            <ThemeSwitch />
+          </div>
+        </Section>
+
         <Section title="Keyboard shortcuts" description="Move through your inbox without touching the mouse.">
           <Button variant="secondary" onClick={openShortcuts} icon={<KeyboardIcon className="h-4 w-4" />}>
             View shortcuts
@@ -200,10 +211,13 @@ export function SettingsPage() {
           </Button>
         </Section>
 
-        <p className="flex items-center justify-center gap-1.5 pt-2 text-xs text-white/25">
-          <LockIcon className="h-3 w-3" />
-          InboxIQ v{__APP_VERSION__}
-        </p>
+        <div className="space-y-1 pt-2 text-center text-xs text-white/30">
+          <p className="flex items-center justify-center gap-1.5">
+            <LockIcon className="h-3 w-3" />
+            InboxIQ v{__APP_VERSION__}
+          </p>
+          <p>Built by Team Syntrix</p>
+        </div>
       </div>
 
       <ConfirmDialog

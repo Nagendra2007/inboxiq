@@ -304,6 +304,7 @@ npm run build   # type-checks (tsc -b) then produces dist/
 - **Deep links:** inbox filters and the open email live in the URL (`/inbox?priority=HIGH&email=<id>`), so the dashboard links straight into filtered views and the browser back button closes an email.
 - **Live updates:** one Server-Sent Events connection for the whole app (`context/RealtimeContext.tsx`) delivers new mail, read/delete changes and finished analyses, each applied to just the affected email. If the stream is down, the inbox falls back to polling.
 - **Keyboard:** `C` compose, `/` search, `J`/`K` next/previous email, `Esc` close, `?` shortcut sheet, `Ctrl+Enter` generate a draft.
+- **Light and dark themes:** dark by default; the **Light mode** switch (sidebar, Settings, sign-in page) is remembered per browser. The palette is CSS variables (`src/index.css`, `html.theme-light`), so components don't carry per-theme classes; `public/assets/theme-init-v1.js` applies a saved theme before first paint.
 - **Resilience:** a sleeping free-tier server shows a "waking up" screen that retries on its own instead of bouncing you to sign-in; an expired session returns you to sign-in with a notice.
 
 ## REST API

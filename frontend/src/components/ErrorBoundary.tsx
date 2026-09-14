@@ -31,7 +31,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
         <button
           type="button"
           onClick={() => window.location.reload()}
-          className="h-10 rounded-xl bg-accent-500 px-5 text-sm font-semibold text-ink-900 transition hover:bg-accent-400"
+          className="h-10 rounded-xl bg-accent-500 px-5 text-sm font-semibold text-on-accent transition hover:bg-accent-400"
         >
           Reload InboxIQ
         </button>

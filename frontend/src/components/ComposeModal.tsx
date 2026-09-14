@@ -29,7 +29,7 @@ function Stepper({ step }: { step: Step }) {
             className={cn(
               'flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold',
               i < activeIndex && 'bg-accent-500/15 text-accent-300',
-              i === activeIndex && 'bg-accent-500 text-ink-900',
+              i === activeIndex && 'bg-accent-500 text-on-accent',
               i > activeIndex && 'bg-white/[0.06] text-white/35'
             )}
             aria-current={i === activeIndex ? 'step' : undefined}

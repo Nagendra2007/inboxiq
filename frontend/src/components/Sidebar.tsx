@@ -5,6 +5,7 @@ import { cn } from '../lib/cn';
 import { formatCount } from '../lib/format';
 import { Avatar } from './ui/Avatar';
 import { Logo } from './ui/Logo';
+import { ThemeToggleRow } from './ThemeToggle';
 import { DashboardIcon, InboxIcon, KeyboardIcon, PenIcon, SettingsIcon, TodoIcon } from './ui/Icons';
 
 interface NavItem {
@@ -60,11 +61,11 @@ export function Sidebar({
           onClick={onCompose}
           disabled={!user.gmailConnected}
           title={user.gmailConnected ? 'Compose (C)' : 'Connect Gmail to compose'}
-          className="group flex h-10 w-full items-center gap-2 rounded-xl bg-accent-500 px-3.5 text-sm font-semibold text-ink-900 shadow-glow transition hover:bg-accent-400 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
+          className="group flex h-10 w-full items-center gap-2 rounded-xl bg-accent-500 px-3.5 text-sm font-semibold text-on-accent shadow-glow transition hover:bg-accent-400 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
         >
           <PenIcon className="h-4 w-4" />
           Compose
-          <span className="ml-auto rounded-md bg-ink-900/15 px-1.5 text-[10px] font-bold text-ink-900/70">C</span>
+          <span className="ml-auto rounded-md bg-on-accent/15 px-1.5 text-[10px] font-bold text-on-accent/70">C</span>
         </button>
       </div>
 
@@ -117,6 +118,7 @@ export function Sidebar({
           Shortcuts
           <span className="kbd ml-auto">?</span>
         </button>
+        <ThemeToggleRow />
       </div>
 
       <div className="border-t border-white/[0.06] p-3">
@@ -141,6 +143,7 @@ export function Sidebar({
             </span>
           </span>
         </NavLink>
+        <p className="mt-2 px-2 text-2xs text-white/30">Built by Team Syntrix</p>
       </div>
     </aside>
   );
@@ -169,7 +172,7 @@ export function MobileTabBar({ stats }: { stats: DashboardDto | null }) {
             <span className="relative">
               <item.icon className="h-5 w-5" />
               {count > 0 && (
-                <span className="absolute -right-2.5 -top-1.5 min-w-[1.1rem] rounded-full bg-accent-500 px-1 text-center text-[10px] font-bold leading-4 text-ink-900">
+                <span className="absolute -right-2.5 -top-1.5 min-w-[1.1rem] rounded-full bg-accent-500 px-1 text-center text-[10px] font-bold leading-4 text-on-accent">
                   {count > 99 ? '99+' : count}
                 </span>
               )}
@@ -188,7 +191,7 @@ export function MobileComposeButton({ onCompose }: { onCompose: () => void }) {
       type="button"
       onClick={onCompose}
       aria-label="Compose new email"
-      className="fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] right-4 z-30 flex h-14 w-14 items-center justify-center rounded-2xl bg-accent-500 text-ink-900 shadow-glow transition active:scale-95 md:hidden"
+      className="fixed bottom-[calc(4.75rem+env(safe-area-inset-bottom))] right-4 z-30 flex h-14 w-14 items-center justify-center rounded-2xl bg-accent-500 text-on-accent shadow-glow transition active:scale-95 md:hidden"
     >
       <PenIcon className="h-5 w-5" strokeWidth={2} />
     </button>

@@ -294,7 +294,7 @@ export function DashboardPage() {
               action={
                 <Link
                   to="/inbox"
-                  className="inline-flex h-9 items-center gap-2 rounded-lg bg-accent-500 px-4 text-sm font-semibold text-ink-900 transition hover:bg-accent-400"
+                  className="inline-flex h-9 items-center gap-2 rounded-lg bg-accent-500 px-4 text-sm font-semibold text-on-accent transition hover:bg-accent-400"
                 >
                   Go to Inbox
                   <ArrowRightIcon className="h-4 w-4" />

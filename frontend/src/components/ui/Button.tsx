@@ -7,12 +7,12 @@ export type ButtonSize = 'xs' | 'sm' | 'md' | 'lg';
 
 const VARIANTS: Record<ButtonVariant, string> = {
   primary:
-    'bg-accent-500 text-ink-900 shadow-[0_1px_0_0_rgba(255,255,255,0.35)_inset] hover:bg-accent-400 active:bg-accent-600',
+    'bg-accent-500 text-on-accent shadow-[0_1px_0_0_rgba(255,255,255,0.35)_inset] hover:bg-accent-400 active:bg-accent-600',
   secondary: 'border border-white/10 bg-white/[0.04] text-white/80 hover:border-white/15 hover:bg-white/[0.07] hover:text-white',
   ghost: 'text-white/60 hover:bg-white/[0.06] hover:text-white',
-  danger: 'bg-rose-500 text-white hover:bg-rose-400 active:bg-rose-600',
+  danger: 'bg-rose-500 text-on-danger hover:bg-rose-400 active:bg-rose-600',
   'danger-ghost': 'border border-rose-500/25 text-rose-300 hover:border-rose-500/40 hover:bg-rose-500/10',
-  success: 'bg-emerald-400 text-ink-900 hover:bg-emerald-300 active:bg-emerald-500',
+  success: 'bg-emerald-400 text-on-accent hover:bg-emerald-300 active:bg-emerald-500',
 };
 
 const SIZES: Record<ButtonSize, string> = {

@@ -3,8 +3,127 @@
 @tailwind utilities;
 
 @layer base {
+  /* Theme palettes as RGB channels (see tailwind.config.js). Dark is the
+     default; `html.theme-light` (set by src/lib/theme.ts, and before first
+     paint by public/assets/theme-init-v1.js) swaps in the light one. */
   :root {
     color-scheme: dark;
+    --fg: 255 255 255;
+    --fg-alpha-boost: 1;
+
+    --ink-950: 2 5 5;
+    --ink-900: 5 9 11;
+    --ink-850: 8 13 15;
+    --ink-800: 11 17 19;
+    --ink-750: 14 21 23;
+    --ink-700: 17 26 28;
+    --ink-600: 26 37 40;
+    --ink-500: 38 52 55;
+    --ink-400: 58 74 78;
+
+    --text-accent-200: 230 255 153;
+    --text-accent-300: 221 255 112;
+    --text-accent-400: 209 255 61;
+    --text-accent-500: 200 255 0;
+    --accent-line: 200 255 0;
+    --status-neutral: 74 83 86;
+
+    --text-emerald-100: 209 250 229;
+    --text-emerald-200: 167 243 208;
+    --text-emerald-300: 110 231 183;
+    --text-emerald-400: 52 211 153;
+    --text-amber-100: 254 243 199;
+    --text-amber-200: 253 230 138;
+    --text-amber-300: 252 211 77;
+    --text-amber-400: 251 191 36;
+    --text-rose-100: 255 228 230;
+    --text-rose-200: 254 205 211;
+    --text-rose-300: 253 164 175;
+    --text-rose-400: 251 113 133;
+    --text-orange-100: 255 237 213;
+    --text-orange-200: 254 215 170;
+    --text-orange-400: 251 146 60;
+    --text-sky-200: 186 230 253;
+    --text-sky-400: 56 189 248;
+    --text-violet-200: 221 214 254;
+    --text-violet-400: 167 139 250;
+    --text-cyan-200: 165 243 252;
+    --text-cyan-400: 34 211 238;
+    --text-fuchsia-200: 245 208 254;
+    --text-fuchsia-400: 232 121 249;
+    --text-indigo-200: 199 210 254;
+    --text-indigo-400: 129 140 248;
+    --text-teal-200: 153 246 228;
+    --text-teal-400: 45 212 191;
+    --text-blue-200: 191 219 254;
+    --text-blue-400: 96 165 250;
+    --text-pink-200: 251 207 232;
+    --text-pink-400: 244 114 182;
+
+    --shadow-elevated: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 12px 32px -12px rgba(0, 0, 0, 0.7),
+      0 32px 80px -24px rgba(0, 0, 0, 0.8);
+    --shadow-inset: inset 0 1px 0 0 rgba(255, 255, 255, 0.04);
+  }
+
+  /* Light: near-black ink on a soft gray page with white panels. Tinted
+     text moves to the dark end of its hue; lime stays for fills. */
+  :root.theme-light {
+    color-scheme: light;
+    --fg: 11 18 21;
+    --fg-alpha-boost: 1.25;
+
+    --ink-950: 234 238 237;
+    --ink-900: 243 245 244;
+    --ink-850: 249 250 250;
+    --ink-800: 255 255 255;
+    --ink-750: 246 248 247;
+    --ink-700: 255 255 255;
+    --ink-600: 255 255 255;
+    --ink-500: 214 220 219;
+    --ink-400: 186 195 194;
+
+    --text-accent-200: 61 82 0;
+    --text-accent-300: 74 99 0;
+    --text-accent-400: 85 112 0;
+    --text-accent-500: 95 125 0;
+    --accent-line: 110 145 0;
+    --status-neutral: 163 172 174;
+
+    --text-emerald-100: 6 78 59;
+    --text-emerald-200: 6 95 70;
+    --text-emerald-300: 4 120 87;
+    --text-emerald-400: 5 150 105;
+    --text-amber-100: 120 53 15;
+    --text-amber-200: 146 64 14;
+    --text-amber-300: 180 83 9;
+    --text-amber-400: 217 119 6;
+    --text-rose-100: 136 19 55;
+    --text-rose-200: 159 18 57;
+    --text-rose-300: 190 18 60;
+    --text-rose-400: 225 29 72;
+    --text-orange-100: 124 45 18;
+    --text-orange-200: 154 52 18;
+    --text-orange-400: 234 88 12;
+    --text-sky-200: 7 89 133;
+    --text-sky-400: 2 132 199;
+    --text-violet-200: 91 33 182;
+    --text-violet-400: 124 58 237;
+    --text-cyan-200: 21 94 117;
+    --text-cyan-400: 8 145 178;
+    --text-fuchsia-200: 134 25 143;
+    --text-fuchsia-400: 192 38 211;
+    --text-indigo-200: 55 48 163;
+    --text-indigo-400: 79 70 229;
+    --text-teal-200: 17 94 89;
+    --text-teal-400: 13 148 136;
+    --text-blue-200: 30 64 175;
+    --text-blue-400: 37 99 235;
+    --text-pink-200: 157 23 77;
+    --text-pink-400: 219 39 119;
+
+    --shadow-elevated: 0 0 0 1px rgba(11, 18, 21, 0.06), 0 12px 32px -12px rgba(11, 18, 21, 0.16),
+      0 32px 80px -24px rgba(11, 18, 21, 0.14);
+    --shadow-inset: 0 1px 2px 0 rgba(11, 18, 21, 0.04);
   }
   html {
     font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
@@ -70,9 +189,9 @@
     @apply absolute inset-0 -translate-x-full animate-shimmer bg-gradient-to-r from-transparent via-white/[0.06] to-transparent;
   }
 
-  /* Sanitized email HTML is rendered on a light "paper" surface: email
-     markup routinely hardcodes dark text colors that would vanish on the
-     app's dark background. */
+  /* Sanitized email HTML is rendered on a white "paper" surface on both
+     themes (bg-paper): email markup routinely hardcodes its own colors,
+     which only reliably work on white. */
   .email-html {
     @apply break-words text-[15px] leading-relaxed text-neutral-800;
   }
@@ -104,7 +223,7 @@
 @layer utilities {
   .scrollbar-thin {
     scrollbar-width: thin;
-    scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+    scrollbar-color: rgb(var(--fg) / 0.12) transparent;
   }
   .scrollbar-thin::-webkit-scrollbar {
     width: 8px;
