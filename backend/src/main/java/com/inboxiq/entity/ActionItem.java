@@ -5,6 +5,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.OnDelete;
+import org.hibernate.annotations.OnDeleteAction;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -24,6 +26,7 @@ public class ActionItem {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "email_id", nullable = false)
+    @OnDelete(action = OnDeleteAction.CASCADE) // matches the ON DELETE CASCADE in V1__init_schema.sql
     private EmailMessage email;
 
     @Column(name = "description", nullable = false, length = 500)

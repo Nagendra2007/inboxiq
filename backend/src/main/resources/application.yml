@@ -39,6 +39,18 @@ spring:
   lifecycle:
     timeout-per-shutdown-phase: 20s
 
+  # Sessions are stored in Postgres (tables created by Flyway V4), so signing
+  # in survives restarts and redeploys. Lifetime/cookie: server.servlet.session.
+  session:
+    jdbc:
+      initialize-schema: never
+
+  task:
+    scheduling:
+      pool:
+        # Gmail polling, SSE heartbeats, analysis recovery, session cleanup.
+        size: 2
+
   web:
     resources:
       # The SPA shell (index.html, favicon) must always be revalidated so a
@@ -88,12 +100,9 @@ spring:
             user-info-uri: https://openidconnect.googleapis.com/v1/userinfo
             user-name-attribute: sub
             jwk-set-uri: https://www.googleapis.com/oauth2/v3/certs
-            # access_type=offline + prompt=consent are required to receive a
-            # refresh token (otherwise Google only issues a short-lived access
-            # token and background sync would stop working after ~1 hour).
-            authorization-uri-request-parameters:
-              access_type: offline
-              prompt: consent
+            # access_type/prompt are added per request by
+            # GoogleAuthorizationRequestResolver (consent only when Gmail needs
+            # a new refresh token).
 
 server:
   # PORT is what Render/Railway/Fly/Heroku-style platforms inject.
@@ -126,7 +135,12 @@ server:
         # DEPLOYMENT.md for why the single-origin setup is recommended.
         same-site: ${COOKIE_SAME_SITE:lax}
         secure: ${COOKIE_SECURE:false}
-      timeout: 7d
+        # A persistent cookie, so closing the browser doesn't sign you out.
+        # Renewed on each app load (AuthController#me), so it only lapses
+        # after this long without opening InboxIQ.
+        max-age: ${SESSION_DAYS:30}d
+      # Idle lifetime of the server-side session (stored in Postgres).
+      timeout: ${SESSION_DAYS:30}d
 
 app:
   frontend:
@@ -147,7 +161,6 @@ app:
     # cookie, or one of them silently stops reaching the backend cross-domain.
     cookie-same-site: ${COOKIE_SAME_SITE:Lax}
     cookie-secure: ${COOKIE_SECURE:false}
-    session-max-age-seconds: 604800 # 7 days
 
   # Who may change app-wide settings (Settings → AI provider): comma-separated
   # Google account emails. Empty = the first account created on this deployment.
@@ -173,17 +186,26 @@ app:
     # Cap on each AI response (summaries and drafts need far less). Also
     # bounds the credit OpenRouter reserves per call — see AppProperties.
     max-output-tokens: ${AI_MAX_OUTPUT_TOKENS:1500}
+    # Emails analyzed at once in the background. Low on purpose: free and
+    # low-tier provider plans rate-limit bursts (20 new emails at once).
+    analysis-concurrency: ${AI_ANALYSIS_CONCURRENCY:2}
+    # A failed analysis is retried automatically until it has had this many
+    # attempts (only for emails synced in the last day).
+    analysis-max-attempts: 3
 
   gmail:
-    # How many messages to pull per initial-sync page. Keep modest: each
-    # message requires a follow-up get() call, and Gmail enforces per-user
-    # quota (250 quota units/sec by default).
-    initial-sync-page-size: 25
-    # A brand-new account's very first sync only pulls this many (fast,
-    # feels instant). Every sync after that pulls everything since they
-    # connected, up to the lifetime cap below.
+    # First connection only: fetch just the newest N inbox messages, however
+    # big the mailbox is. After that, sync is incremental via Gmail's history
+    # API — only messages that are new or changed since the last pass.
     first-sync-message-cap: ${FIRST_SYNC_MESSAGE_CAP:20}
-    max-total-synced-messages: ${MAX_TOTAL_SYNCED_MESSAGES:600}
+    # Safety valve for one incremental pass (e.g. after a long absence): keep
+    # the newest N new messages.
+    max-new-messages-per-sync: ${MAX_NEW_MESSAGES_PER_SYNC:100}
+    # How often mailboxes of users who have InboxIQ open are checked for new
+    # mail. Each check is one cheap history call.
+    poll-interval-seconds: ${GMAIL_POLL_SECONDS:30}
+    # Parallel message downloads within one sync pass.
+    fetch-concurrency: 4
 
   sync:
     # Guard against re-analyzing an unchanged email. See EmailAnalysisService.

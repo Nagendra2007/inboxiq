@@ -6,8 +6,6 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
-import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestResolver;
-import org.springframework.security.oauth2.client.web.DefaultOAuth2AuthorizationRequestResolver;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
@@ -21,12 +19,11 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.function.Supplier;
 
 /**
@@ -35,7 +32,14 @@ import java.util.function.Supplier;
  *  - Authentication is 100% delegated to Google via OAuth2 login
  *    (authorization_code + OIDC). InboxIQ never sees or stores a password.
  *  - The session cookie (INBOXIQ_SESSION) is HttpOnly + SameSite=Lax, so
- *    the token itself never touches frontend JS.
+ *    the token itself never touches frontend JS. The session lives in
+ *    Postgres (see SessionConfig) and the cookie is persistent, so sign-in
+ *    survives closing the browser and restarting the server. Nothing
+ *    auth-related is kept in localStorage.
+ *  - Gmail access is authorized separately from signing in (see
+ *    GoogleAuthorizationRequestResolver): its tokens are stored encrypted on
+ *    the mail account and refreshed server-side, and losing them never signs
+ *    the user out — the app just asks them to reconnect Gmail.
  *  - CSRF protection is ON for all state-changing requests, using the
  *    double-submit cookie pattern (XSRF-TOKEN cookie readable by JS,
  *    echoed back as the X-XSRF-TOKEN header) so the SPA can call mutating
@@ -117,6 +121,9 @@ public class SecurityConfig {
                             .policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN))
             )
             .authorizeHttpRequests(auth -> auth
+                    // The completion of an already-authorized async request
+                    // (the /api/events stream closing) is not a new request.
+                    .dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll()
                     .requestMatchers("/oauth2/**", "/login/**", "/actuator/health", "/error").permitAll()
                     .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                     .requestMatchers("/api/**").authenticated()
@@ -137,7 +144,7 @@ public class SecurityConfig {
                     // from the server (a page refresh, or an OAuth error redirect).
                     .loginPage("/login")
                     .authorizationEndpoint(endpoint -> endpoint
-                            .authorizationRequestResolver(authorizationRequestResolver(clientRegistrationRepository)))
+                            .authorizationRequestResolver(new GoogleAuthorizationRequestResolver(clientRegistrationRepository)))
                     .successHandler(oAuth2LoginSuccessHandler)
                     .failureHandler(oAuth2LoginFailureHandler)
             )
@@ -149,28 +156,6 @@ public class SecurityConfig {
             );
 
         return http.build();
-    }
-
-    /**
-     * Adds {@code access_type=offline&prompt=consent} to the Google
-     * authorization request. Without this, Google only ever issues a
-     * refresh token on the very first consent — and never again, even on a
-     * fresh login — which would silently break background sync/reply-sending
-     * once the initial access token expires. This is also configurable
-     * directly in application.yml; kept here as a resolver in case scopes
-     * ever need to be requested incrementally per-feature in the future.
-     */
-    private OAuth2AuthorizationRequestResolver authorizationRequestResolver(
-            ClientRegistrationRepository clientRegistrationRepository) {
-        DefaultOAuth2AuthorizationRequestResolver resolver = new DefaultOAuth2AuthorizationRequestResolver(
-                clientRegistrationRepository, "/oauth2/authorization");
-        resolver.setAuthorizationRequestCustomizer(builder -> builder.additionalParameters(params -> {
-            Map<String, Object> extra = new HashMap<>();
-            extra.put("access_type", "offline");
-            extra.put("prompt", "consent");
-            params.putAll(extra);
-        }));
-        return resolver;
     }
 
     /**

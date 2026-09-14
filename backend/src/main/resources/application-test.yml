@@ -9,6 +9,10 @@ spring:
       ddl-auto: create-drop
   flyway:
     enabled: false
+  session:
+    jdbc:
+      # Flyway (which creates these tables in production) is off in tests.
+      initialize-schema: always
   security:
     oauth2:
       client:

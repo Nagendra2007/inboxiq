@@ -3,6 +3,12 @@ package com.inboxiq.gmail;
 import com.google.api.client.googleapis.json.GoogleJsonResponseException;
 import com.google.api.client.util.Base64;
 import com.google.api.services.gmail.Gmail;
+import com.google.api.services.gmail.model.History;
+import com.google.api.services.gmail.model.HistoryLabelAdded;
+import com.google.api.services.gmail.model.HistoryLabelRemoved;
+import com.google.api.services.gmail.model.HistoryMessageAdded;
+import com.google.api.services.gmail.model.HistoryMessageDeleted;
+import com.google.api.services.gmail.model.ListHistoryResponse;
 import com.google.api.services.gmail.model.ListMessagesResponse;
 import com.google.api.services.gmail.model.Message;
 import com.inboxiq.entity.MailAccount;
@@ -16,6 +22,8 @@ import org.springframework.stereotype.Component;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.math.BigInteger;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
 
@@ -40,9 +48,127 @@ public class GmailInboxClient {
         this.messageParser = messageParser;
     }
 
-    /** Lists message ids in INBOX, newest first, one page at a time. */
-    public GmailListPage listInboxMessages(MailAccount account, String pageToken, int maxResults) {
-        return search(account, "in:inbox", pageToken, maxResults);
+    /** Gmail returns this when a history id is older than the history it keeps (about a week, sometimes less). */
+    public static class HistoryExpiredException extends RuntimeException {
+        public HistoryExpiredException(Throwable cause) {
+            super("Gmail history checkpoint has expired", cause);
+        }
+    }
+
+    private static final String LABEL_INBOX = "INBOX";
+    private static final List<String> SYNC_HISTORY_TYPES =
+            List.of("messageAdded", "messageDeleted", "labelAdded", "labelRemoved");
+
+    /**
+     * An API client bound to one valid access token, for a sync pass that
+     * makes many calls (and downloads in parallel) without refreshing the
+     * token once per call.
+     */
+    public Gmail open(MailAccount account) {
+        return clientFactory.forAccount(account);
+    }
+
+    /** The mailbox's current history id — the checkpoint a first sync starts from. */
+    public String currentHistoryId(Gmail gmail) {
+        try {
+            BigInteger historyId = gmail.users().getProfile(USER_ID).execute().getHistoryId();
+            return historyId == null ? null : historyId.toString();
+        } catch (GoogleJsonResponseException e) {
+            throw translate(e);
+        } catch (IOException e) {
+            throw GmailIntegrationException.unavailable(e);
+        }
+    }
+
+    /** Ids of the newest {@code limit} INBOX messages, newest first. One call, whatever the mailbox size. */
+    public List<String> latestInboxMessageIds(Gmail gmail, int limit) {
+        try {
+            ListMessagesResponse response = gmail.users().messages().list(USER_ID)
+                    .setLabelIds(List.of(LABEL_INBOX))
+                    .setMaxResults((long) limit)
+                    .execute();
+            return response.getMessages() == null ? List.of()
+                    : response.getMessages().stream().map(Message::getId).toList();
+        } catch (GoogleJsonResponseException e) {
+            throw translate(e);
+        } catch (IOException e) {
+            throw GmailIntegrationException.unavailable(e);
+        }
+    }
+
+    /**
+     * One page of changes after {@code startHistoryId}.
+     *
+     * @throws HistoryExpiredException when Gmail no longer has history that old
+     */
+    public GmailHistoryPage listHistory(Gmail gmail, String startHistoryId, String pageToken) {
+        try {
+            Gmail.Users.History.List request = gmail.users().history().list(USER_ID)
+                    .setStartHistoryId(new BigInteger(startHistoryId))
+                    .setHistoryTypes(SYNC_HISTORY_TYPES)
+                    .setMaxResults(500L);
+            if (pageToken != null && !pageToken.isBlank()) {
+                request.setPageToken(pageToken);
+            }
+            ListHistoryResponse response = request.execute();
+
+            List<GmailHistoryPage.Change> changes = new ArrayList<>();
+            if (response.getHistory() != null) {
+                for (History record : response.getHistory()) {
+                    addChanges(record, changes);
+                }
+            }
+            String historyId = response.getHistoryId() == null ? null : response.getHistoryId().toString();
+            return new GmailHistoryPage(changes, response.getNextPageToken(), historyId);
+        } catch (GoogleJsonResponseException e) {
+            if (e.getStatusCode() == 404) {
+                throw new HistoryExpiredException(e);
+            }
+            throw translate(e);
+        } catch (IOException e) {
+            throw GmailIntegrationException.unavailable(e);
+        }
+    }
+
+    private static void addChanges(History record, List<GmailHistoryPage.Change> changes) {
+        if (record.getMessagesAdded() != null) {
+            for (HistoryMessageAdded added : record.getMessagesAdded()) {
+                Message m = added.getMessage();
+                if (m != null) changes.add(new GmailHistoryPage.Change(
+                        GmailHistoryPage.Type.MESSAGE_ADDED, m.getId(), m.getLabelIds()));
+            }
+        }
+        if (record.getLabelsAdded() != null) {
+            for (HistoryLabelAdded added : record.getLabelsAdded()) {
+                if (added.getMessage() != null) changes.add(new GmailHistoryPage.Change(
+                        GmailHistoryPage.Type.LABELS_ADDED, added.getMessage().getId(), added.getLabelIds()));
+            }
+        }
+        if (record.getLabelsRemoved() != null) {
+            for (HistoryLabelRemoved removed : record.getLabelsRemoved()) {
+                if (removed.getMessage() != null) changes.add(new GmailHistoryPage.Change(
+                        GmailHistoryPage.Type.LABELS_REMOVED, removed.getMessage().getId(), removed.getLabelIds()));
+            }
+        }
+        if (record.getMessagesDeleted() != null) {
+            for (HistoryMessageDeleted deleted : record.getMessagesDeleted()) {
+                if (deleted.getMessage() != null) changes.add(new GmailHistoryPage.Change(
+                        GmailHistoryPage.Type.MESSAGE_DELETED, deleted.getMessage().getId(), List.of()));
+            }
+        }
+    }
+
+    /** Fetches and parses one message, or returns null if it no longer exists in Gmail. */
+    public ParsedGmailMessage getMessageIfPresent(Gmail gmail, String messageId) {
+        try {
+            Message message = gmail.users().messages().get(USER_ID, messageId).setFormat("full").execute();
+            return messageParser.parse(message);
+        } catch (GoogleJsonResponseException e) {
+            if (e.getStatusCode() == 404) return null;
+            throw translate(e);
+        } catch (IOException e) {
+            throw GmailIntegrationException.unavailable(e);
+        }
     }
 
     /**
@@ -171,12 +297,25 @@ public class GmailInboxClient {
 
     private GmailIntegrationException translate(GoogleJsonResponseException e) {
         int status = e.getStatusCode();
-        if (status == 401) {
+        if (status == 401 || (status == 403 && isMissingPermission(e))) {
             return GmailIntegrationException.reauthRequired(e);
         }
         if (status == 403 || status == 429) {
             return GmailIntegrationException.quotaExceeded(e);
         }
         return GmailIntegrationException.unavailable(e);
+    }
+
+    /**
+     * A 403 is usually a rate limit, but it is also what Gmail returns when
+     * the user unticked a Gmail permission on Google's consent screen. That
+     * one needs a reconnect, not a retry.
+     */
+    private static boolean isMissingPermission(GoogleJsonResponseException e) {
+        if (e.getDetails() == null) return false;
+        String message = e.getDetails().getMessage();
+        if (message != null && message.toLowerCase(java.util.Locale.ROOT).contains("insufficient")) return true;
+        return e.getDetails().getErrors() != null && e.getDetails().getErrors().stream()
+                .anyMatch(info -> "insufficientPermissions".equals(info.getReason()));
     }
 }

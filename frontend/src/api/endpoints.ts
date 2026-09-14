@@ -15,6 +15,7 @@ import type {
   Page,
   Priority,
   RiskLevel,
+  SyncStatusDto,
   ThreadMessageDto,
   UserDto,
 } from '../types';
@@ -28,13 +29,11 @@ export const AuthApi = {
 };
 
 // --- Gmail sync ---
-export interface SyncResult {
-  fetched: number;
-  newlyStored: number;
-}
-
+// Syncs run in the background on the server; results arrive over the
+// realtime stream (see context/RealtimeContext.tsx).
 export const GmailApi = {
-  sync: () => apiFetch<SyncResult>('/api/gmail/sync', { method: 'POST', timeoutMs: LONG_TIMEOUT_MS }),
+  sync: () => apiFetch<{ status: 'STARTED' | 'ALREADY_RUNNING' }>('/api/gmail/sync', { method: 'POST' }),
+  status: () => apiFetch<SyncStatusDto>('/api/gmail/status'),
 };
 
 // --- Dashboard ---

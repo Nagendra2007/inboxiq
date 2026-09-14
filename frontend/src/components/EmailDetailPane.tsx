@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { EmailApi, ActionItemApi } from '../api/endpoints';
 import { errorMessage, isAbortError } from '../api/client';
+import { useRealtime, useRealtimeEvent } from '../context/RealtimeContext';
 import type { EmailAnalysisDto, EmailDetailDto, ThreadMessageDto } from '../types';
 import { cn } from '../lib/cn';
 import { deadlineInfo, formatFullDate, formatListTime, parseSender } from '../lib/format';
@@ -25,9 +26,11 @@ import {
   XIcon,
 } from './ui/Icons';
 
+// Fallback only, while the realtime stream is down.
 const ANALYSIS_POLL_MS = 3000;
 const ANALYSIS_POLL_LIMIT = 40; // ~2 minutes
 
+/** No analysis yet also counts: opening an email that was never analyzed starts its analysis. */
 function isPending(analysis: EmailAnalysisDto | null | undefined): boolean {
   return !analysis || analysis.analysisStatus === 'PENDING';
 }
@@ -193,10 +196,40 @@ export function EmailDetailPane({
     return () => controller.abort();
   }, [load]);
 
-  // Freshly synced emails are analyzed in the background; watch for the result.
+  // Emails are analyzed in the background. The result is pushed over the
+  // realtime stream; only this email is updated.
+  const applyAnalysis = useCallback(
+    async (analysis: EmailAnalysisDto | null | undefined) => {
+      if (!analysis) return;
+      setEmail((prev) => (prev ? { ...prev, analysis } : prev));
+      callbacks.current.onAnalysisChange?.(emailId, analysis);
+      await load(undefined, true); // picks up extracted action items too
+    },
+    [emailId, load]
+  );
+  useRealtimeEvent('email.analysis.completed', (event) => {
+    if (event.emailId === emailId) applyAnalysis(event.analysis);
+  });
+  useRealtimeEvent('email.analysis.failed', (event) => {
+    if (event.emailId === emailId) applyAnalysis(event.analysis);
+  });
+  useRealtimeEvent('email.analysis.started', (event) => {
+    if (event.emailId !== emailId) return;
+    setEmail((prev) =>
+      prev && prev.analysis && prev.analysis.analysisStatus !== 'PENDING'
+        ? { ...prev, analysis: { ...prev.analysis, analysisStatus: 'PENDING' } }
+        : prev
+    );
+  });
+  useRealtimeEvent('resync', () => {
+    load(undefined, true);
+  });
+
+  // Fallback while the realtime stream is down: poll for the result.
+  const live = useRealtime().status === 'open';
   const pending = !!email && isPending(email.analysis);
   useEffect(() => {
-    if (!pending) return;
+    if (!pending || live) return;
     let attempts = 0;
     const controller = new AbortController();
     const id = window.setInterval(async () => {
@@ -220,7 +253,7 @@ export function EmailDetailPane({
       window.clearInterval(id);
       controller.abort();
     };
-  }, [pending, emailId, load]);
+  }, [pending, live, emailId, load]);
 
   const reanalyze = async () => {
     setReanalyzing(true);
@@ -388,7 +421,7 @@ export function EmailDetailPane({
               <div className="space-y-2.5" role="status">
                 <p className="flex items-center gap-2 text-sm text-white/50">
                   <SparklesIcon className="h-3.5 w-3.5 animate-pulse text-accent-400" />
-                  InboxIQ is reading this email…
+                  Analyzing… the summary will appear here on its own.
                 </p>
                 <span className="skeleton h-3.5 w-full" />
                 <span className="skeleton h-3.5 w-5/6" />

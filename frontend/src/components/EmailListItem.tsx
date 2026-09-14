@@ -5,8 +5,13 @@ import { formatListTime, parseSender } from '../lib/format';
 import { Avatar } from './ui/Avatar';
 import { SparklesIcon, TrashIcon } from './ui/Icons';
 
+/**
+ * Queued or running in the background. New emails arrive with a PENDING
+ * analysis; an email with no analysis at all predates background analysis
+ * and just shows its snippet (it's analyzed when opened).
+ */
 export function isAnalysisPending(email: Pick<EmailSummaryDto, 'analysis'>): boolean {
-  return !email.analysis || email.analysis.analysisStatus === 'PENDING';
+  return email.analysis?.analysisStatus === 'PENDING';
 }
 
 /**
@@ -67,7 +72,7 @@ export const EmailListItem = memo(function EmailListItem({
           {pending ? (
             <span className="mt-1.5 flex items-center gap-1.5 text-xs text-white/35">
               <SparklesIcon className="h-3 w-3 animate-pulse text-accent-500/70" />
-              Summarizing…
+              Analyzing…
             </span>
           ) : (
             summary && <span className="mt-1 line-clamp-2 text-xs leading-relaxed text-white/40">{summary}</span>

@@ -176,7 +176,8 @@ See `backend/src/main/resources/db/migration/V1__init_schema.sql` for the exact 
 - **No passwords, ever.** Authentication is 100% delegated to Google OAuth 2.0 (`authorization_code` + OIDC). InboxIQ never sees, requests, or stores a Gmail password.
 - **Encrypted tokens at rest.** OAuth access/refresh tokens are encrypted with AES-256-GCM (`TokenEncryptionService`) before being written to the database, keyed by `TOKEN_ENCRYPTION_KEY`. They are never logged (`MailAccount.toString()` deliberately excludes them).
 - **Least-privilege scopes.** `openid`, `email`, `profile`, `gmail.readonly`, `gmail.send`, and `gmail.modify` (only so deleting in InboxIQ moves the message to Gmail's Trash) — never the full-mailbox scope.
-- **Session cookies**, HttpOnly + SameSite=Lax, never exposed to JavaScript. The UI and API are served from one origin, so both cookies are first-party.
+- **Server-side sessions.** Signing in creates a session stored in Postgres (Spring Session JDBC) behind an HttpOnly + SameSite=Lax cookie that JavaScript never sees. The cookie is persistent (30 days, renewed on every visit), so closing the browser, a restart or a redeploy doesn't sign anyone out. Nothing auth-related is kept in `localStorage`. The UI and API are served from one origin, so both cookies are first-party.
+- **Sign-in is separate from Gmail access.** Signing in only proves who you are (Google's account chooser; no consent screen for returning users). Gmail access is a separate, revocable grant: its tokens live encrypted on the mail account and are refreshed server-side. If Google revokes it, you stay signed in and the app asks you to **Reconnect Gmail** (`/oauth2/authorization/google?consent=1`), which goes through Google's consent screen once to obtain a new grant.
 - **CSRF protection** via the double-submit cookie pattern (`XSRF-TOKEN` readable cookie + `X-XSRF-TOKEN` header), the pattern Spring Security's own docs recommend for a JSON SPA. The token is issued on the first request, so the very first write after sign-in succeeds.
 - **Security headers** on the served app: a Content-Security-Policy (`script-src 'self'`, no framing), `Referrer-Policy`, `X-Content-Type-Options`, and HSTS over https. Email HTML is sanitized server-side and rendered on an isolated "paper" surface.
 - **No secrets in the frontend.** The OAuth client secret and the OpenRouter API key exist only in backend environment variables/`.env` — never shipped to the browser.
@@ -196,6 +197,28 @@ See `backend/src/main/resources/db/migration/V1__init_schema.sql` for the exact 
 | `gmail.modify` | Move a message to Trash when the user deletes it in InboxIQ (reversible in Gmail for 30 days). |
 
 Deliberately **not requested**: `mail.google.com` (full account access, including permanent deletion, settings and filters). If a future feature needs more, request it as its own additional, justified scope — never widen access speculatively. Accounts connected before `gmail.modify` was added need to disconnect and reconnect before deletes reach Gmail.
+
+## Sync, real-time updates & background analysis
+
+Nothing a user waits on — signing in, opening the inbox — ever waits for Gmail or the AI. The inbox always renders from the database first; everything else happens in the background and is pushed to the browser.
+
+**Sync state lives in the database** (on the `mail_accounts` row), never in the browser:
+
+| Situation | What `EmailSyncService` does |
+|---|---|
+| First connection (no checkpoint yet) | Records Gmail's current `historyId`, then fetches only the **newest 20** inbox messages — one list call, whatever the mailbox size. |
+| Every later sync (sign-in, app opened, every 30 s while open, **Sync** button) | Calls Gmail's **History API** from the saved `historyId` and applies only what changed: new inbox messages are stored, read/unread changes mirrored, deleted/trashed/spammed messages removed. Nothing already stored is downloaded again. |
+| Checkpoint too old (Gmail keeps about a week of history) | Catches up with the newest 20 messages instead of rescanning the mailbox. |
+
+The checkpoint only advances after a pass has applied everything up to it, and storage is idempotent on Gmail's message id (unique per mailbox), so a pass that fails halfway — Gmail down, server restarting — is redone from the same point without duplicates. `SyncCoordinator` runs at most one pass per mailbox at a time, on background threads, and polls Gmail (one cheap history call) only for users who currently have the app open; everyone else catches up on their next visit. An expired access token is refreshed server-side; a revoked grant flags the account for reconnecting instead of signing the user out.
+
+**Real-time updates** use one Server-Sent Events stream per browser tab (`GET /api/events`) — authenticated by the session cookie like any other API call, and carrying only the signed-in user's events:
+
+`sync.started` · `sync.completed` · `sync.error` · `email.received` · `email.saved` · `email.updated` · `email.deleted` · `email.analysis.started` · `email.analysis.completed` · `email.analysis.failed`
+
+The browser reconnects by itself after a drop; on every reconnect the inbox refetches its first page, so events missed in between are never lost for good. A dot beside the **Inbox** title shows whether live updates are on.
+
+**AI analysis runs in the background** (`AnalysisQueue`): a new email is saved with a `PENDING` analysis and shown at once as *Analyzing…*; a small fixed number of analyses run concurrently (so a first sync doesn't hit the provider's rate limit); each result is pushed as `email.analysis.completed` and updates just that email. An email is never analyzed twice at once, and a completed analysis is never redone (Gmail message content never changes — only labels do). `PENDING` rows survive restarts and are picked up again, and a failed analysis gets a couple of spaced automatic retries before it's left for a manual **Re-analyze**.
 
 ## AI pipeline & cost optimization
 
@@ -279,7 +302,7 @@ npm run build   # type-checks (tsc -b) then produces dist/
 
 - **Responsive:** a two-pane inbox (list + reader) on desktop collapses to a single pane on mobile, with a bottom tab bar replacing the sidebar.
 - **Deep links:** inbox filters and the open email live in the URL (`/inbox?priority=HIGH&email=<id>`), so the dashboard links straight into filtered views and the browser back button closes an email.
-- **Live analysis:** freshly synced emails are analyzed in the background; the list and reader poll until each summary lands.
+- **Live updates:** one Server-Sent Events connection for the whole app (`context/RealtimeContext.tsx`) delivers new mail, read/delete changes and finished analyses, each applied to just the affected email. If the stream is down, the inbox falls back to polling.
 - **Keyboard:** `C` compose, `/` search, `J`/`K` next/previous email, `Esc` close, `?` shortcut sheet, `Ctrl+Enter` generate a draft.
 - **Resilience:** a sleeping free-tier server shows a "waking up" screen that retries on its own instead of bouncing you to sign-in; an expired session returns you to sign-in with a notice.
 
@@ -287,11 +310,13 @@ npm run build   # type-checks (tsc -b) then produces dist/
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/api/auth/me` | Current user + Gmail connection status |
+| GET | `/api/auth/me` | Current user + Gmail connection status (connected / reconnect needed); renews the session cookie |
 | POST | `/api/auth/logout` | End the session |
 | POST | `/api/auth/disconnect` | Revoke Gmail access, keep data |
 | DELETE | `/api/auth/data` | Permanently delete all InboxIQ data |
-| POST | `/api/gmail/sync` | Sync inbox from Gmail |
+| POST | `/api/gmail/sync` | Start an incremental sync in the background (202; results arrive as events) |
+| GET | `/api/gmail/status` | Persisted sync state: last sync, first sync done, reconnect needed |
+| GET | `/api/events` | Server-Sent Events stream of the user's sync/email/analysis events |
 | GET | `/api/emails` | Paginated inbox list |
 | GET | `/api/emails/search` | Filtered search |
 | GET | `/api/emails/{id}` | Full email detail (marks read) |
@@ -321,9 +346,12 @@ npm run build   # type-checks (tsc -b) then produces dist/
 
 ## Testing
 
-`backend/src/test/java` includes unit tests for the parts of the system where a subtle bug would silently corrupt output: `AiResponseParserTest` (malformed/hostile LLM JSON), `PriorityEngineTest` (scoring bands and rule effects), `RiskRuleEngineTest` (phishing heuristics). Run with `mvn test`.
+`backend/src/test/java` covers the parts of the system where a subtle bug would silently corrupt output or cost money. Run with `mvn test` (the `test` profile boots the full app on H2):
 
-**Not yet written** (see [Known limitations](#known-limitations--next-steps)): controller-level integration tests, OAuth flow tests, and Gmail client tests against a mocked API — the `application-test.yml` H2 profile is already set up for these.
+- `EmailSyncIntegrationTest` — against a fake 500-message Gmail: the first sync stores only the newest 20; later syncs apply only history changes and never re-list or re-download the mailbox; an expired checkpoint catches up with the newest messages only; a pass that fails halfway keeps its checkpoint and is redone without duplicates; revoked access flags the account without losing data. `HistoryDeltaTest` covers the history-to-changes reduction.
+- `SessionAndRealtimeIntegrationTest` — sessions are stored in the database behind a 30-day cookie; sign-in doesn't force Google's consent screen but connecting Gmail does; the event stream requires sign-in and only carries the user's own events.
+- `WebSecurityIntegrationTest`, `AdminAiSettingsIntegrationTest` — routing, the 401/CSRF handshake, security headers, admin-only AI settings.
+- `AiResponseParserTest` (malformed/hostile LLM JSON), `PriorityEngineTest`, `RiskRuleEngineTest`, `OpenAiCompatibleClientTest` (provider error handling against a fake HTTP server).
 
 ## Project structure
 
@@ -340,6 +368,7 @@ inboxiq/
 │       ├── gmail/        Gmail API client, message parsing, HTML sanitization
 │       ├── ai/           OpenRouter client, prompts, response parsing
 │       ├── service/      Business logic (sync, analysis, priority, risk, replies, dashboard)
+│       ├── realtime/     Server-Sent Events hub and the /api/events stream
 │       ├── repository/   Spring Data JPA
 │       ├── entity/       JPA entities
 │       ├── dto/          API request/response shapes
@@ -349,7 +378,7 @@ inboxiq/
 └── frontend/          React + Vite + TypeScript + Tailwind SPA
     └── src/
         ├── api/           fetch client (CSRF, timeouts, errors) + typed endpoint calls
-        ├── context/       Auth state and the signed-in app shell
+        ├── context/       Auth state, the realtime (SSE) connection, the signed-in app shell
         ├── components/    Domain UI (list rows, reader, composer, sidebar)
         │   └── ui/        Primitives: buttons, dialogs, toasts, icons, feedback states
         ├── hooks/         Debounce, keyboard shortcuts
@@ -359,8 +388,7 @@ inboxiq/
 
 ## Known limitations & next steps
 
-- **Sessions are in-memory**, so a restart or redeploy signs users out. Spring Session (JDBC/Redis) is the natural fix for multi-instance or zero-downtime deploys.
-- **Incremental sync** is a documented extension point (`EmailSyncService`), not yet implemented — today's sync re-lists the inbox each time (deduped, capped). Wiring real Gmail push notifications (`history.list` from `lastHistoryId`) is a natural next step and reuses the same storage/analysis path.
-- **In-memory rate limiting** is per-instance — fine for a single backend instance; a multi-instance deployment should back `RateLimiterService` with Redis instead.
+- **New mail is detected by polling** Gmail's history (every 30 s, only while the user has the app open) rather than Gmail push notifications. Push via Cloud Pub/Sub (`users.watch`) would cut the delay to seconds but needs a Pub/Sub topic and a public webhook; it would plug into `SyncCoordinator#requestSync` without other changes.
+- **Realtime streams, sync coordination and rate limiting are in-memory** — fine for a single backend instance; a multi-instance deployment should back `EventStreamService`, `SyncCoordinator` and `RateLimiterService` with a shared broker/store (Redis, or Postgres `LISTEN/NOTIFY`). Sessions are already shared (Postgres).
+- **Archived mail stays.** Removing a message from Gmail's inbox without deleting it keeps the InboxIQ copy (and its summary and to-dos); deleting, trashing or marking it spam removes it.
 - **Thread threading headers** (`In-Reply-To`/`References`) on sent replies rely on Gmail's `threadId` grouping; the original message's RFC 822 `Message-ID` header isn't currently persisted, so header-level threading is best-effort (Gmail's own thread grouping still works correctly).
-- **Test coverage** is currently limited to pure-logic unit tests (parser, scoring engines); controller/integration tests are the natural next addition using the already-configured H2 test profile.

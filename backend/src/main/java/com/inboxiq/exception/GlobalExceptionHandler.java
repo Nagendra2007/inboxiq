@@ -9,6 +9,8 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
+import org.springframework.web.context.request.async.AsyncRequestTimeoutException;
 
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -50,6 +52,16 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Object> handleConstraintViolation(ConstraintViolationException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(body("VALIDATION_ERROR", "One or more fields are invalid."));
+    }
+
+    /**
+     * A realtime stream (GET /api/events) timed out or its tab went away. Both
+     * are routine; the response is already a committed event stream, so
+     * there is nothing to write back.
+     */
+    @ExceptionHandler({AsyncRequestTimeoutException.class, AsyncRequestNotUsableException.class})
+    public void handleClosedStream() {
+        // Intentionally empty.
     }
 
     @ExceptionHandler(Exception.class)

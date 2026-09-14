@@ -50,9 +50,33 @@ public class MailAccount {
     @Column(name = "token_expiry")
     private Instant tokenExpiry;
 
-    /** Gmail's mailbox-wide history id, used as the incremental-sync checkpoint. */
+    /**
+     * Gmail's mailbox-wide history id: the incremental-sync checkpoint. Only
+     * advanced after a sync pass has applied every change up to it, so a pass
+     * that stops halfway is simply redone from the same point next time.
+     */
     @Column(name = "last_history_id")
     private String lastHistoryId;
+
+    /** When the first (newest-N) sync finished. Null until then. */
+    @Column(name = "initial_sync_completed_at")
+    private Instant initialSyncCompletedAt;
+
+    /** Last successful sync pass. */
+    @Column(name = "last_sync_at")
+    private Instant lastSyncAt;
+
+    /** User-safe message from the last failed pass; null once a pass succeeds. */
+    @Column(name = "last_sync_error", length = 500)
+    private String lastSyncError;
+
+    /**
+     * Google rejected the stored refresh token (revoked in the Google
+     * account, or expired). The InboxIQ session is unaffected; the user just
+     * has to reconnect Gmail. Cleared when a new refresh token arrives.
+     */
+    @Column(name = "reauth_required", nullable = false)
+    private boolean reauthRequired = false;
 
     @Column(name = "active", nullable = false)
     private boolean active = true;

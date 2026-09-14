@@ -1,9 +1,13 @@
 package com.inboxiq.security;
 
 import com.inboxiq.config.AppProperties;
+import com.inboxiq.entity.MailAccount;
 import com.inboxiq.service.MailAccountService;
+import com.inboxiq.service.SyncCoordinator;
+import com.inboxiq.service.SyncTrigger;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.core.Authentication;
@@ -19,10 +23,12 @@ import java.time.Instant;
 
 /**
  * Runs once, right after Spring Security completes the Google OAuth
- * authorization_code exchange. Persists the user + encrypted tokens into our
- * own database (see {@link MailAccountService}) so background sync and
- * "send reply" work without depending on the browser session staying open,
- * then redirects back to the SPA.
+ * authorization_code exchange. At this point the user is signed in to
+ * InboxIQ (the session exists). Separately, it persists the Gmail tokens,
+ * encrypted, into our own database (see {@link MailAccountService}) so
+ * background sync and "send reply" work without the browser session, starts
+ * a background sync, and redirects back to the SPA — without waiting for
+ * Gmail.
  */
 @Component
 public class OAuth2LoginSuccessHandler extends SimpleUrlAuthenticationSuccessHandler {
@@ -31,13 +37,16 @@ public class OAuth2LoginSuccessHandler extends SimpleUrlAuthenticationSuccessHan
 
     private final OAuth2AuthorizedClientRepository authorizedClientRepository;
     private final MailAccountService mailAccountService;
+    private final SyncCoordinator syncCoordinator;
     private final AppProperties appProperties;
 
     public OAuth2LoginSuccessHandler(OAuth2AuthorizedClientRepository authorizedClientRepository,
                                       MailAccountService mailAccountService,
+                                      SyncCoordinator syncCoordinator,
                                       AppProperties appProperties) {
         this.authorizedClientRepository = authorizedClientRepository;
         this.mailAccountService = mailAccountService;
+        this.syncCoordinator = syncCoordinator;
         this.appProperties = appProperties;
     }
 
@@ -73,9 +82,31 @@ public class OAuth2LoginSuccessHandler extends SimpleUrlAuthenticationSuccessHan
             return;
         }
 
-        mailAccountService.upsertFromOAuthLogin(email, name, accessToken, refreshToken, expiresAt);
+        MailAccount account = mailAccountService.upsertFromOAuthLogin(email, name, accessToken, refreshToken, expiresAt);
+        String frontend = appProperties.getFrontend().getBaseUrl();
 
+        HttpSession session = request.getSession(false);
+        boolean consentJustGiven = session != null
+                && session.getAttribute(GoogleAuthorizationRequestResolver.CONSENT_REQUESTED_ATTRIBUTE) != null;
+        if (session != null) {
+            session.removeAttribute(GoogleAuthorizationRequestResolver.CONSENT_REQUESTED_ATTRIBUTE);
+        }
+
+        // Signed in, but InboxIQ has no Gmail grant it can keep using (first
+        // connection, access revoked, or data deleted): Google only issues a
+        // refresh token on its consent screen, so go through it once. The
+        // flag stops this from ever looping.
+        if (!mailAccountService.hasUsableGmailGrant(account) && !consentJustGiven) {
+            getRedirectStrategy().sendRedirect(request, response, frontend + "/oauth2/authorization/google?consent=1");
+            return;
+        }
+
+        // Fetch new mail in the background while the browser loads the app;
+        // the inbox shows what's already stored and updates over SSE.
+        syncCoordinator.requestSync(account.getId(), SyncTrigger.LOGIN);
+
+        boolean gmailJustConnected = refreshToken != null && !refreshToken.isBlank();
         getRedirectStrategy().sendRedirect(request, response,
-                appProperties.getFrontend().getBaseUrl() + "/inbox?connected=1");
+                frontend + (gmailJustConnected ? "/inbox?connected=1" : "/inbox"));
     }
 }

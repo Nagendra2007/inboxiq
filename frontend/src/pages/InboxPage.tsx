@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { EmailApi, GmailApi, type SearchFilters } from '../api/endpoints';
-import { errorMessage, isAbortError, startGoogleLogin } from '../api/client';
+import { errorMessage, isAbortError, startGmailConnect } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { useAppShell } from '../context/AppShell';
+import { useRealtime, useRealtimeEvent, type RealtimeStatus } from '../context/RealtimeContext';
 import type { Category, EmailAnalysisDto, EmailDetailDto, EmailSummaryDto, Page, Priority, RiskLevel } from '../types';
 import { cn } from '../lib/cn';
 import { formatTimeAgo, pluralize, titleCase } from '../lib/format';
@@ -34,11 +35,29 @@ const PRIORITIES: Priority[] = ['HIGH', 'MEDIUM', 'LOW'];
 const RISK_LEVELS: RiskLevel[] = ['HIGH', 'MEDIUM', 'LOW'];
 
 const PAGE_SIZE = 40;
+// Fallback only, while the realtime stream is down: watch for background analysis.
 const LIST_POLL_MS = 5000;
-const LIST_POLL_LIMIT = 24; // ~2 minutes of watching for background analysis
+const LIST_POLL_LIMIT = 24; // ~2 minutes
+const SYNC_FOLLOW_MS = 2000;
+const SYNC_FOLLOW_LIMIT = 30;
 
 function oneOf<T extends string>(value: string | null, allowed: readonly T[]): T | '' {
   return value && (allowed as readonly string[]).includes(value) ? (value as T) : '';
+}
+
+const receivedTime = (email: EmailSummaryDto) => (email.receivedAt ? Date.parse(email.receivedAt) : 0) || 0;
+const byNewest = (a: EmailSummaryDto, b: EmailSummaryDto) => receivedTime(b) - receivedTime(a);
+
+/**
+ * Merges a freshly fetched first page into the list: its rows win, rows it
+ * doesn't cover (loaded further down) are kept, and rows inside its range
+ * that it no longer contains were deleted and are dropped.
+ */
+function mergeFirstPage(prev: EmailSummaryDto[], fresh: EmailSummaryDto[], isWholeList: boolean): EmailSummaryDto[] {
+  const freshIds = new Set(fresh.map((e) => e.id));
+  const oldestFresh = fresh.length ? Math.min(...fresh.map(receivedTime)) : Infinity;
+  const kept = prev.filter((e) => !freshIds.has(e.id) && !isWholeList && receivedTime(e) < oldestFresh);
+  return [...fresh, ...kept].sort(byNewest);
 }
 
 function FilterSelect({
@@ -99,7 +118,7 @@ function ConnectGmail() {
         </ul>
         <button
           type="button"
-          onClick={startGoogleLogin}
+          onClick={startGmailConnect}
           className="mt-7 flex h-11 w-full items-center justify-center gap-3 rounded-xl bg-white text-sm font-semibold text-ink-900 transition hover:bg-white/90 active:scale-[0.99]"
         >
           <GoogleIcon />
@@ -111,6 +130,25 @@ function ConnectGmail() {
         </p>
       </div>
     </div>
+  );
+}
+
+/** Dot beside the title: green while new mail and summaries arrive by themselves. */
+function LiveIndicator({ status }: { status: RealtimeStatus }) {
+  if (status === 'off') return null;
+  const live = status === 'open';
+  const label = live
+    ? 'Live — new mail appears automatically'
+    : status === 'connecting'
+      ? 'Connecting for live updates…'
+      : 'Reconnecting — live updates are paused';
+  return (
+    <span
+      role="img"
+      aria-label={label}
+      title={label}
+      className={cn('h-1.5 w-1.5 rounded-full transition-colors', live ? 'bg-emerald-400' : 'bg-amber-400')}
+    />
   );
 }
 
@@ -206,6 +244,9 @@ export function InboxPage() {
   const requestId = useRef(0);
   const emailsRef = useRef(emails);
   emailsRef.current = emails;
+  // A resync that arrived while the list was still loading runs right after it.
+  const reconcileAfterLoad = useRef(false);
+  const reconcileRef = useRef<() => void>(() => {});
 
   const fetchPage = useCallback(
     (pageIndex: number, size: number, signal?: AbortSignal): Promise<Page<EmailSummaryDto>> =>
@@ -239,7 +280,12 @@ export function InboxPage() {
         setPhase('error');
       })
       .finally(() => {
-        if (id === requestId.current) setRefetching(false);
+        if (id !== requestId.current) return;
+        setRefetching(false);
+        if (reconcileAfterLoad.current) {
+          reconcileAfterLoad.current = false;
+          reconcileRef.current();
+        }
       });
     return () => controller.abort();
   }, [connected, fetchPage, reloadKey]);
@@ -279,9 +325,15 @@ export function InboxPage() {
     return () => observer.disconnect();
   }, [hasMore, loadMore]);
 
-  // Freshly synced emails are analyzed in the background. While any are
-  // still pending, quietly refresh so summaries appear as they land.
-  const anyPending = phase === 'ready' && !pollExhausted && emails.some(isAnalysisPending);
+  const realtime = useRealtime();
+  const live = realtime.status === 'open';
+  const liveRef = useRef(live);
+  liveRef.current = live;
+
+  // Fallback for when the realtime stream is down: emails are analyzed in
+  // the background, so while any are pending, quietly refresh so summaries
+  // appear as they land. With the stream up, each result is pushed instead.
+  const anyPending = phase === 'ready' && !live && !pollExhausted && emails.some(isAnalysisPending);
   useEffect(() => {
     if (!anyPending) return;
     let attempts = 0;
@@ -313,37 +365,171 @@ export function InboxPage() {
   }, [anyPending, fetchPage, refreshStats]);
 
   // --- Sync ---
+  // Syncing happens on the server, in the background: on sign-in, when the
+  // app opens its realtime stream, every ~30s while it's open, and on the
+  // Sync button. This page never waits for it — it shows what's stored and
+  // applies what the stream reports (new mail, read/deleted changes,
+  // finished analyses) one email at a time.
   const [syncing, setSyncing] = useState(false);
-  const [lastSynced, setLastSynced] = useState<Date | null>(null);
+  const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
+  const [initialSyncDone, setInitialSyncDone] = useState(true);
+  const [incoming, setIncoming] = useState(0);
+  const manualSync = useRef(false);
+
+  const loadSyncStatus = useCallback(() => {
+    GmailApi.status()
+      .then((status) => {
+        setLastSyncAt(status.lastSyncAt);
+        setInitialSyncDone(status.initialSyncCompleted);
+        setSyncing(status.syncing && (!status.initialSyncCompleted || manualSync.current));
+      })
+      .catch(() => {
+        // Only feeds the subtitle; the list has its own error handling.
+      });
+  }, []);
+
+  useEffect(() => {
+    if (connected) loadSyncStatus();
+  }, [connected, loadSyncStatus]);
+
+  /** Quietly re-reads the first page and merges it, so the list is right even if events were missed. */
+  const reconcile = useCallback(async () => {
+    const id = requestId.current;
+    try {
+      const size = Math.min(100, Math.max(PAGE_SIZE, emailsRef.current.length));
+      const data = await fetchPage(0, size);
+      if (id !== requestId.current) return;
+      setEmails((prev) => mergeFirstPage(prev, data.content, data.last));
+      setTotal(data.totalElements);
+      if (data.last) setHasMore(false);
+      setError(null);
+      setPhase('ready');
+    } catch {
+      // The next event, sync or reload will bring it back in line.
+    }
+  }, [fetchPage]);
+  reconcileRef.current = reconcile;
+
+  const finishManualSync = useCallback(
+    (result: { newEmails: number } | null, failure?: string) => {
+      if (!manualSync.current) return;
+      manualSync.current = false;
+      if (failure) toast.error('Sync failed', failure);
+      else if (result && result.newEmails > 0)
+        toast.success(`${pluralize(result.newEmails, 'new email')}`, 'Summaries appear as each one is analyzed.');
+      else toast.info('You’re up to date', 'No new emails since the last sync.');
+    },
+    [toast]
+  );
+
+  /** Without the realtime stream, follow a manual sync by polling its status instead. */
+  const followSyncWithoutRealtime = useCallback(async () => {
+    for (let i = 0; i < SYNC_FOLLOW_LIMIT; i += 1) {
+      await new Promise((resolve) => window.setTimeout(resolve, SYNC_FOLLOW_MS));
+      if (liveRef.current) return; // the stream is back and will report the result
+      try {
+        const status = await GmailApi.status();
+        if (!status.syncing) {
+          setLastSyncAt(status.lastSyncAt);
+          setInitialSyncDone(status.initialSyncCompleted);
+          break;
+        }
+      } catch {
+        // Keep waiting.
+      }
+    }
+    setSyncing(false);
+    await reconcile();
+    refreshStats();
+    finishManualSync(null);
+  }, [finishManualSync, reconcile, refreshStats]);
 
   const sync = useCallback(async () => {
+    manualSync.current = true;
     setSyncing(true);
     try {
-      const result = await GmailApi.sync();
-      setLastSynced(new Date());
-      if (result.newlyStored > 0) {
-        toast.success(`${pluralize(result.newlyStored, 'new email')} synced`, 'AI summaries appear as each one is analyzed.');
-      } else {
-        toast.info('You’re up to date', 'No new emails since the last sync.');
-      }
-      setReloadKey((k) => k + 1);
-      refreshStats();
+      await GmailApi.sync(); // returns at once; the result arrives as sync.completed
+      if (!liveRef.current) await followSyncWithoutRealtime();
     } catch (err) {
-      toast.error('Sync failed', errorMessage(err, 'Please try again.'));
-    } finally {
+      manualSync.current = false;
       setSyncing(false);
+      toast.error('Sync failed', errorMessage(err, 'Please try again.'));
     }
-  }, [refreshStats, toast]);
+  }, [followSyncWithoutRealtime, toast]);
 
-  // Just back from Google's consent screen: pull the inbox straight away.
+  useRealtimeEvent('sync.started', (event) => {
+    if (event.initial || manualSync.current) setSyncing(true);
+  });
+  useRealtimeEvent('sync.completed', (event) => {
+    setSyncing(false);
+    setIncoming(0);
+    setLastSyncAt(event.lastSyncAt);
+    setInitialSyncDone(true);
+    finishManualSync(event);
+    if (event.newEmails || event.updatedEmails || event.removedEmails || event.mode !== 'INCREMENTAL') {
+      reconcile();
+    }
+  });
+  useRealtimeEvent('sync.error', (event) => {
+    setSyncing(false);
+    setIncoming(0);
+    // Background checks retry by themselves; only a click deserves a toast.
+    // (Reconnect-required is shown as a banner by the app layout.)
+    finishManualSync(null, event.message);
+  });
+  useRealtimeEvent('email.received', () => setIncoming((n) => n + 1));
+  useRealtimeEvent('email.saved', ({ email }) => {
+    setIncoming((n) => Math.max(0, n - 1));
+    // Filtered views catch up on sync.completed (a new email has no
+    // category or priority yet, so it rarely matches a filter anyway).
+    if (hasFilters || phase !== 'ready' || emailsRef.current.some((e) => e.id === email.id)) return;
+    setEmails((prev) => [email, ...prev.filter((e) => e.id !== email.id)].sort(byNewest));
+    setTotal((t) => t + 1);
+  });
+  useRealtimeEvent('email.updated', ({ id, read }) => {
+    setEmails((prev) => prev.map((e) => (e.id === id && e.read !== read ? { ...e, read } : e)));
+  });
+  useRealtimeEvent('email.deleted', ({ id }) => {
+    if (!emailsRef.current.some((e) => e.id === id)) return;
+    setEmails((prev) => prev.filter((e) => e.id !== id));
+    setTotal((t) => Math.max(0, t - 1));
+    if (selectedId === id) select(null);
+  });
+  useRealtimeEvent('email.analysis.started', ({ emailId }) => {
+    setEmails((prev) =>
+      prev.map((e) =>
+        e.id === emailId && e.analysis?.analysisStatus !== 'PENDING'
+          ? { ...e, analysis: { ...(e.analysis ?? emptyAnalysis), analysisStatus: 'PENDING' } }
+          : e
+      )
+    );
+  });
+  useRealtimeEvent('email.analysis.completed', ({ emailId, analysis }) => {
+    if (analysis) setEmails((prev) => prev.map((e) => (e.id === emailId ? { ...e, analysis } : e)));
+  });
+  useRealtimeEvent('email.analysis.failed', ({ emailId, analysis }) => {
+    const shown = analysis ?? emptyAnalysis;
+    setEmails((prev) => prev.map((e) => (e.id === emailId ? { ...e, analysis: shown } : e)));
+  });
+  // The stream (re)opened: whatever happened before or in between, catch up.
+  // If the list is still loading, its snapshot may predate the stream, so
+  // re-check once it's in.
+  useRealtimeEvent('resync', () => {
+    setPollExhausted(false);
+    loadSyncStatus();
+    if (phase === 'loading' || refetching) reconcileAfterLoad.current = true;
+    else reconcile();
+  });
+
+  // Just back from Google's consent screen. The server has already started
+  // fetching the newest emails; they appear here as they're saved.
   const handledConnect = useRef(false);
   useEffect(() => {
     if (!connected || handledConnect.current || params.get('connected') !== '1') return;
     handledConnect.current = true;
     updateParams({ connected: null });
     toast.success('Gmail connected', 'Fetching your latest emails…');
-    sync();
-  }, [connected, params, sync, toast, updateParams]);
+  }, [connected, params, toast, updateParams]);
 
   // --- Selection & keyboard ---
   const select = useCallback(
@@ -424,10 +610,11 @@ export function InboxPage() {
   const subtitle = [
     phase === 'ready' ? (hasFilters ? `${total.toLocaleString()} matching` : pluralize(total, 'email')) : null,
     !hasFilters && stats ? `${stats.unreadEmails.toLocaleString()} unread` : null,
-    lastSynced ? `synced ${formatTimeAgo(lastSynced)}` : null,
+    incoming > 0 ? `receiving ${incoming}…` : lastSyncAt ? `synced ${formatTimeAgo(new Date(lastSyncAt))}` : null,
   ]
     .filter(Boolean)
     .join(' · ');
+  const firstSyncRunning = !hasFilters && (syncing || !initialSyncDone);
 
   return (
     <div className="flex min-h-0 flex-1">
@@ -442,7 +629,10 @@ export function InboxPage() {
         <header className="shrink-0 space-y-3 border-b border-white/[0.06] px-4 pb-3 pt-4">
           <div className="flex items-center gap-3">
             <div className="min-w-0 flex-1">
-              <h1 className="text-lg font-semibold tracking-tight text-white">Inbox</h1>
+              <h1 className="flex items-center gap-2 text-lg font-semibold tracking-tight text-white">
+                Inbox
+                <LiveIndicator status={realtime.status} />
+              </h1>
               <p className="truncate text-xs text-white/40" aria-live="polite">
                 {subtitle || ' '}
               </p>
@@ -565,7 +755,13 @@ export function InboxPage() {
           )}
 
           {phase === 'ready' && emails.length === 0 && (
-            hasFilters ? (
+            firstSyncRunning ? (
+              <EmptyState
+                icon={<Spinner className="h-5 w-5 text-accent-400" />}
+                title="Fetching your latest emails"
+                description="Your most recent Gmail messages will appear here in a moment, each one summarized as soon as it’s analyzed."
+              />
+            ) : hasFilters ? (
               <EmptyState
                 icon={<SearchIcon className="h-5 w-5" />}
                 title="No emails match"
@@ -661,8 +857,9 @@ export function InboxPage() {
   );
 }
 
-// Stand-in once polling gives up, so a row whose analysis never arrived
-// shows its snippet instead of a perpetual "Summarizing…".
+// Stand-in for an analysis that failed without a result (or that fallback
+// polling gave up on), so the row shows its snippet instead of a perpetual
+// "Analyzing…". Also the base for marking a row as analyzing.
 const emptyAnalysis: EmailAnalysisDto = {
   summary: null,
   keyPoints: [],

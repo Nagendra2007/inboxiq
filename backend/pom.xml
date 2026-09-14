@@ -74,6 +74,12 @@
             <groupId>org.flywaydb</groupId>
             <artifactId>flyway-database-postgresql</artifactId>
         </dependency>
+        <!-- Server-side sessions in Postgres: sign-in survives restarts and
+             redeploys instead of living in one JVM's memory. -->
+        <dependency>
+            <groupId>org.springframework.session</groupId>
+            <artifactId>spring-session-jdbc</artifactId>
+        </dependency>
 
         <!-- Validation -->
         <dependency>

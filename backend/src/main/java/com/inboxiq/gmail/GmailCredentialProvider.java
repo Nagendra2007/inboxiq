@@ -56,6 +56,7 @@ public class GmailCredentialProvider {
 
         String refreshToken = mailAccountService.decryptRefreshToken(account);
         if (refreshToken == null || refreshToken.isBlank()) {
+            mailAccountService.markReauthRequired(account.getId());
             throw GmailIntegrationException.reauthRequired(null);
         }
 
@@ -75,15 +76,30 @@ public class GmailCredentialProvider {
                     ? tokenResponse.getExpiresInSeconds() : 3600L;
             Instant newExpiry = Instant.now().plusSeconds(expiresInSeconds);
 
-            mailAccountService.updateAccessToken(account.getId(), newAccessToken, newExpiry);
+            // Also updates this instance, so later calls with the same object
+            // (e.g. the rest of a sync pass) reuse the token instead of
+            // refreshing again.
+            mailAccountService.updateAccessToken(account, newAccessToken, newExpiry);
             log.info("Refreshed Gmail access token for mail account id={}", account.getId());
             return newAccessToken;
 
         } catch (TokenResponseException e) {
-            // invalid_grant almost always means the refresh token was revoked
-            // (user removed access at myaccount.google.com/permissions).
-            log.warn("Gmail token refresh failed with invalid_grant-type error for account id={}", account.getId());
-            throw GmailIntegrationException.reauthRequired(e);
+            String error = e.getDetails() != null ? e.getDetails().getError() : null;
+            if (e.getStatusCode() >= 500) {
+                throw GmailIntegrationException.unavailable(e);
+            }
+            if ("invalid_grant".equals(error)) {
+                // The refresh token was revoked (the user removed access at
+                // myaccount.google.com/permissions) or expired. The InboxIQ
+                // session stays valid; only Gmail needs reconnecting.
+                log.warn("Gmail refresh token rejected for account id={}; reconnect required", account.getId());
+                mailAccountService.markReauthRequired(account.getId());
+                throw GmailIntegrationException.reauthRequired(e);
+            }
+            // invalid_client and friends: a server configuration problem
+            // (e.g. a rotated client secret), not something the user can fix.
+            log.error("Gmail token refresh failed for account id={} with error '{}'", account.getId(), error);
+            throw GmailIntegrationException.unavailable(e);
         } catch (IOException e) {
             throw GmailIntegrationException.unavailable(e);
         }

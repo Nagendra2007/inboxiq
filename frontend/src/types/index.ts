@@ -13,9 +13,67 @@ export interface UserDto {
   id: string;
   email: string;
   name: string | null;
+  /** A Gmail account is linked (not disconnected by the user). */
   gmailConnected: boolean;
+  /** Google rejected InboxIQ's Gmail access: still signed in, but Gmail must be reconnected. */
+  gmailReauthRequired: boolean;
   /** May change app-wide settings (the AI provider). */
   admin: boolean;
+}
+
+/** Persisted Gmail sync state (GET /api/gmail/status). */
+export interface SyncStatusDto {
+  syncing: boolean;
+  initialSyncCompleted: boolean;
+  lastSyncAt: string | null;
+  lastError: string | null;
+  reauthRequired: boolean;
+}
+
+// --- Realtime (Server-Sent Events from GET /api/events) ---
+export type SyncTrigger = 'LOGIN' | 'CONNECT' | 'POLL' | 'MANUAL';
+
+export interface SyncStartedEvent {
+  trigger: SyncTrigger;
+  initial: boolean;
+}
+
+export interface SyncCompletedEvent {
+  trigger: SyncTrigger;
+  mode: 'INITIAL' | 'INCREMENTAL' | 'CATCH_UP';
+  initial: boolean;
+  newEmails: number;
+  updatedEmails: number;
+  removedEmails: number;
+  lastSyncAt: string;
+}
+
+export interface SyncErrorEvent {
+  code: string;
+  message: string;
+  reauthRequired: boolean;
+}
+
+export interface AnalysisEvent {
+  emailId: string;
+  /** Absent on analysis.started; the rule-based fallback on analysis.failed. */
+  analysis?: EmailAnalysisDto | null;
+}
+
+export interface RealtimeEventMap {
+  connected: { serverTime: string };
+  'sync.started': SyncStartedEvent;
+  'sync.completed': SyncCompletedEvent;
+  'sync.error': SyncErrorEvent;
+  'email.received': { gmailMessageId: string };
+  'email.saved': { email: EmailSummaryDto };
+  'email.updated': { id: string; read: boolean };
+  'email.deleted': { id: string };
+  'email.analysis.started': AnalysisEvent;
+  'email.analysis.completed': AnalysisEvent;
+  'email.analysis.failed': AnalysisEvent;
+  /** Client-side: the stream (re)opened, so events may have been missed — refetch. */
+  resync: Record<string, never>;
 }
 
 /** Who the administrators are, and which rule decided it. */

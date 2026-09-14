@@ -90,11 +90,11 @@ In Google Cloud Console → **APIs & Services**:
 2. **OAuth consent screen → Test users:** make sure your Gmail address is listed. While the app is in Testing mode only listed accounts can sign in.
 3. Scopes on the consent screen should include `gmail.readonly`, `gmail.send` and `gmail.modify` (plus `openid`, `email`, `profile`).
 
-Testing-mode limit: Google expires refresh tokens for Gmail scopes after **7 days**. When sync or send starts failing after a week, sign out and **Continue with Google** again. Only a published (verified) app avoids this.
+Testing-mode limit: Google expires refresh tokens for Gmail scopes after **7 days**. When that happens InboxIQ keeps you signed in and shows a **Reconnect Gmail** banner — click it and approve. Only a published (verified) app avoids this.
 
 ## 6. Use it
 
-Open `https://<your-render-url>`, click **Continue with Google**, approve, and you land in your inbox while the first sync runs. After 15 idle minutes the free instance sleeps; the next visit shows "Waking up InboxIQ…" and retries by itself.
+Open `https://<your-render-url>`, click **Continue with Google**, approve, and you land in your inbox while the newest 20 emails are fetched; summaries fill in as each is analyzed. You stay signed in — closing the browser or a redeploy doesn't sign you out (sessions are stored in the database). While the app is open, new Gmail messages appear on their own within about 30 seconds. After 15 idle minutes the free instance sleeps; the next visit shows "Waking up InboxIQ…" and retries by itself, then catches up on only the mail that arrived meanwhile.
 
 ## Changing the AI provider, model or key
 
@@ -118,7 +118,8 @@ Keys saved here are encrypted with `TOKEN_ENCRYPTION_KEY` and never sent back to
 | After Google sign-in you're back on the sign-in page | A custom domain is in use: set `FRONTEND_URL`, `CORS_ALLOWED_ORIGINS` and `GOOGLE_REDIRECT_URI` to it explicitly. |
 | App crashes on start: *TOKEN_ENCRYPTION_KEY* | Missing, or not Base64 of 16/24/32 bytes — rerun the script from step 3. |
 | App crashes on start: database connection | Wrong `DATABASE_*` values, or the pooled Neon host — rerun step 3 with the direct connection string. |
-| AI summaries never appear, or "out of credits" / "rejected the API key" | Open **Settings → AI provider → Test connection** — it shows the provider's own explanation. Top up credits, fix the key, or switch provider/model there. |
+| AI summaries never appear, or "out of credits" / "rejected the API key" | Open **Settings → AI provider → Test connection** — it shows the provider's own explanation. Top up credits, fix the key, or switch provider/model there. Failed analyses are retried automatically a couple of times; **Re-analyze** on an email retries it now. |
+| New mail doesn't appear by itself (the dot beside **Inbox** stays amber) | Something between the browser and the app is blocking the live connection (`/api/events`). The inbox still works — use **Sync** — and it reconnects on its own. |
 | Out-of-memory restarts on the free plan | Add `JAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=60 -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError`. |
 
 ## Other hosts
@@ -134,5 +135,7 @@ Outside Render, set those three URL variables to your public URL explicitly.
 
 ## Scaling notes
 
-- Rate limiting is in-memory, so it's per instance. Running more than one instance needs a shared store (e.g. Redis) behind `RateLimiterService`.
-- Sessions are in-memory too: a redeploy or restart signs users out. For zero-downtime deploys across instances, add Spring Session (JDBC or Redis).
+- Sessions are stored in Postgres (Spring Session JDBC), so restarts, redeploys and extra instances don't sign anyone out.
+- Rate limiting, the live-update streams and sync coordination are in-memory, so they're per instance. Running more than one instance needs a shared store (e.g. Redis, or Postgres `LISTEN/NOTIFY` for events) behind `RateLimiterService`, `EventStreamService` and `SyncCoordinator`.
+
+Optional tuning variables (defaults in brackets): `SESSION_DAYS` [30], `FIRST_SYNC_MESSAGE_CAP` [20], `GMAIL_POLL_SECONDS` [30], `MAX_NEW_MESSAGES_PER_SYNC` [100], `AI_ANALYSIS_CONCURRENCY` [2].

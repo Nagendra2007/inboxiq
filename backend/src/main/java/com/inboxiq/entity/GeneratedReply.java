@@ -5,6 +5,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.OnDelete;
+import org.hibernate.annotations.OnDeleteAction;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -40,6 +42,7 @@ public class GeneratedReply {
     /** Null for a from-scratch compose draft — see class javadoc. */
     @ManyToOne(fetch = FetchType.LAZY, optional = true)
     @JoinColumn(name = "email_id", nullable = true)
+    @OnDelete(action = OnDeleteAction.CASCADE) // matches the ON DELETE CASCADE in V1__init_schema.sql
     private EmailMessage email;
 
     /** Recipient address, only meaningfully used for compose drafts (a reply's recipient comes from the source email). */

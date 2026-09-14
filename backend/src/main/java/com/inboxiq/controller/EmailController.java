@@ -22,6 +22,7 @@ import com.inboxiq.mapper.EmailMapper;
 import com.inboxiq.repository.ActionItemRepository;
 import com.inboxiq.repository.EmailRepository;
 import com.inboxiq.security.CurrentUserProvider;
+import com.inboxiq.service.AnalysisQueue;
 import com.inboxiq.service.AssistantCommandService;
 import com.inboxiq.service.EmailAnalysisService;
 import com.inboxiq.service.MailAccountService;
@@ -73,6 +74,7 @@ public class EmailController {
     private final AssistantCommandService assistantCommandService;
     private final GmailInboxClient gmailInboxClient;
     private final RateLimiterService rateLimiterService;
+    private final AnalysisQueue analysisQueue;
 
     public EmailController(CurrentUserProvider currentUserProvider,
                             MailAccountService mailAccountService,
@@ -84,7 +86,8 @@ public class EmailController {
                             ReplyService replyService,
                             AssistantCommandService assistantCommandService,
                             GmailInboxClient gmailInboxClient,
-                            RateLimiterService rateLimiterService) {
+                            RateLimiterService rateLimiterService,
+                            AnalysisQueue analysisQueue) {
         this.currentUserProvider = currentUserProvider;
         this.mailAccountService = mailAccountService;
         this.emailRepository = emailRepository;
@@ -96,6 +99,7 @@ public class EmailController {
         this.assistantCommandService = assistantCommandService;
         this.gmailInboxClient = gmailInboxClient;
         this.rateLimiterService = rateLimiterService;
+        this.analysisQueue = analysisQueue;
     }
 
     @GetMapping
@@ -134,6 +138,12 @@ public class EmailController {
         if (!email.isRead()) {
             email.setRead(true);
             emailRepository.save(email);
+        }
+        // Emails stored before background analysis existed may never have
+        // been analyzed; do it now that someone is reading one. The result
+        // arrives over the realtime stream.
+        if (email.getAnalysis() == null) {
+            analysisQueue.enqueueAfterCommit(email.getId(), email.getMailAccount().getUser().getId());
         }
         List<com.inboxiq.entity.ActionItem> items = actionItemRepository.findByEmailId(email.getId());
         return emailMapper.toDetailDto(email, items);

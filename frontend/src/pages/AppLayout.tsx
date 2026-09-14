@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useRealtimeEvent } from '../context/RealtimeContext';
 import type { AppShellContext } from '../context/AppShell';
 import { DashboardApi } from '../api/endpoints';
+import { startGmailConnect } from '../api/client';
 import type { DashboardDto } from '../types';
 import { useHotkeys } from '../hooks/useHotkeys';
 import { Sidebar, MobileTabBar, MobileComposeButton } from '../components/Sidebar';
@@ -11,7 +13,7 @@ import { ShortcutsDialog } from '../components/ShortcutsDialog';
 import { LogoMark } from '../components/ui/Logo';
 import { Button } from '../components/ui/Button';
 import { Spinner } from '../components/ui/Feedback';
-import { RefreshIcon, ServerIcon } from '../components/ui/Icons';
+import { AlertTriangleIcon, GoogleIcon, RefreshIcon, ServerIcon } from '../components/ui/Icons';
 
 function SplashScreen() {
   return (
@@ -66,6 +68,28 @@ function ServerUnreachable({ onRetry }: { onRetry: () => Promise<void> }) {
   );
 }
 
+/**
+ * Google stopped accepting InboxIQ's Gmail access (revoked in the Google
+ * account, or expired). The user is still signed in and their stored mail
+ * is all here; new mail just can't be fetched until they reconnect.
+ */
+function ReconnectGmailBanner() {
+  return (
+    <div
+      role="alert"
+      className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-b border-amber-400/15 bg-amber-400/[0.06] px-4 py-2.5 md:px-6"
+    >
+      <AlertTriangleIcon className="h-4 w-4 shrink-0 text-amber-300" />
+      <p className="min-w-0 flex-1 text-sm text-amber-100/85">
+        Gmail access has expired or was revoked. Your emails are still here — reconnect to keep receiving new ones.
+      </p>
+      <Button size="sm" variant="secondary" onClick={startGmailConnect} icon={<GoogleIcon className="h-3.5 w-3.5" />}>
+        Reconnect Gmail
+      </Button>
+    </div>
+  );
+}
+
 export function AppLayout() {
   const { user, status, refresh } = useAuth();
   const [composeOpen, setComposeOpen] = useState(false);
@@ -93,6 +117,25 @@ export function AppLayout() {
     refreshStats();
   }, [refreshStats]);
 
+  // Keep the sidebar counts current as mail and analyses arrive. Bursts (a
+  // first sync saves 20 emails in a few seconds) collapse into one refresh.
+  const statsTimer = useRef<number>();
+  const refreshStatsSoon = useCallback(() => {
+    window.clearTimeout(statsTimer.current);
+    statsTimer.current = window.setTimeout(refreshStats, 1200);
+  }, [refreshStats]);
+  useEffect(() => () => window.clearTimeout(statsTimer.current), []);
+  useRealtimeEvent('email.saved', refreshStatsSoon);
+  useRealtimeEvent('email.updated', refreshStatsSoon);
+  useRealtimeEvent('email.deleted', refreshStatsSoon);
+  useRealtimeEvent('email.analysis.completed', refreshStatsSoon);
+  useRealtimeEvent('email.analysis.failed', refreshStatsSoon);
+  useRealtimeEvent('resync', refreshStatsSoon);
+  // Google revoked Gmail access mid-session: re-read /me to show the banner.
+  useRealtimeEvent('sync.error', (event) => {
+    if (event.reauthRequired) refresh();
+  });
+
   const openCompose = useCallback(() => {
     if (connected) setComposeOpen(true);
   }, [connected]);
@@ -113,6 +156,7 @@ export function AppLayout() {
     <div className="flex h-dvh overflow-hidden bg-ink-900">
       <Sidebar user={user} stats={stats} onCompose={openCompose} onShortcuts={openShortcuts} />
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden pb-[calc(3.75rem+env(safe-area-inset-bottom))] md:pb-0">
+        {user.gmailConnected && user.gmailReauthRequired && <ReconnectGmailBanner />}
         <Outlet context={shell} />
       </main>
       <MobileTabBar stats={stats} />

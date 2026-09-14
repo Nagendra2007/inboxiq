@@ -20,7 +20,6 @@ import com.inboxiq.repository.EmailRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,6 +27,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -83,20 +83,17 @@ public class EmailAnalysisService {
     }
 
     /**
-     * Fire-and-forget entry point used right after a new message is synced,
-     * so the sync request itself never blocks on an LLM round trip. This is
-     * a distinct bean-level method (not a self-invocation of {@link #analyze})
-     * so Spring's async proxy actually intercepts the call.
+     * Background entry point (see AnalysisQueue, which owns the threads and
+     * the realtime events). Returns empty if the email no longer exists.
      *
-     * Note that {@code this::analyze} below IS a self-invocation, so
+     * Note that {@code this::analyze} below is a self-invocation, so
      * {@code analyze}'s {@code @Transactional} does not apply on this path.
      * That's deliberate — it keeps a pooled DB connection from being held for
      * the whole LLM round trip — and is why the writes inside {@code analyze}
      * run through {@link #transactionTemplate} explicitly.
      */
-    @Async
-    public void analyzeAsync(UUID emailId) {
-        emailRepository.findById(emailId).ifPresent(this::analyze);
+    public Optional<EmailAnalysis> analyzeStored(UUID emailId) {
+        return emailRepository.findById(emailId).map(this::analyze);
     }
 
     @Transactional
@@ -107,6 +104,7 @@ public class EmailAnalysisService {
                     created.setEmail(email);
                     return created;
                 });
+        analysis.setAiAttempts(analysis.getAiAttempts() + 1);
 
         String bodyForAnalysis = email.getBodyText() != null ? email.getBodyText() : plainFromHtml(email.getBodyHtml());
         RiskRuleEngine.Result ruleRisk = riskRuleEngine.evaluate(email.getSender(), email.getSubject(), bodyForAnalysis);
@@ -138,6 +136,26 @@ public class EmailAnalysisService {
             analysis.setAnalysisStatus(AnalysisStatus.FAILED);
             analysis.setFailureReason("AI analysis is temporarily unavailable; showing rule-based signals only.");
             return emailAnalysisRepository.save(analysis);
+        }
+    }
+
+    /**
+     * Last resort when an analysis crashed outside the AI call itself (e.g. a
+     * database error): mark it FAILED so it counts against its retry budget
+     * instead of sitting in PENDING and being re-queued forever. Returns the
+     * row, or null if there is none or it couldn't be saved.
+     */
+    public EmailAnalysis recordUnexpectedFailure(UUID emailId) {
+        try {
+            return emailAnalysisRepository.findByEmailId(emailId).map(analysis -> {
+                analysis.setAiAttempts(analysis.getAiAttempts() + 1);
+                analysis.setAnalysisStatus(AnalysisStatus.FAILED);
+                analysis.setFailureReason("AI analysis is temporarily unavailable; showing rule-based signals only.");
+                return emailAnalysisRepository.save(analysis);
+            }).orElse(null);
+        } catch (RuntimeException e) {
+            log.warn("Could not record the failed analysis for email id={}", emailId);
+            return null;
         }
     }
 

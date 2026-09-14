@@ -169,7 +169,24 @@ async function request<T>(path: string, options: RequestOptions, allowCsrfRetry:
   return data as T;
 }
 
-/** Full-page navigation into Spring Security's OAuth2 login flow — this is a redirect, not a fetch. */
+/** Absolute URL for a backend path (for things fetch() doesn't make, like EventSource). */
+export function apiUrl(path: string): string {
+  return `${API_BASE}${path}`;
+}
+
+/**
+ * Sign in with Google. Full-page navigation into Spring Security's OAuth2
+ * login flow — a redirect, not a fetch. Shows Google's account chooser; a
+ * returning user isn't asked to grant Gmail access again.
+ */
 export function startGoogleLogin() {
   window.location.href = `${API_BASE}/oauth2/authorization/google`;
+}
+
+/**
+ * Connect or reconnect Gmail: the same Google flow, but through Google's
+ * consent screen, which is what issues InboxIQ a new long-lived Gmail grant.
+ */
+export function startGmailConnect() {
+  window.location.href = `${API_BASE}/oauth2/authorization/google?consent=1`;
 }

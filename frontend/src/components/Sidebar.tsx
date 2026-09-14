@@ -129,7 +129,7 @@ export function Sidebar({
             <span
               className={cn(
                 'absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-ink-850',
-                user.gmailConnected ? 'bg-emerald-400' : 'bg-amber-400'
+                user.gmailConnected && !user.gmailReauthRequired ? 'bg-emerald-400' : 'bg-amber-400'
               )}
               aria-hidden="true"
             />
@@ -137,7 +137,7 @@ export function Sidebar({
           <span className="min-w-0">
             <span className="block truncate text-sm font-medium text-white/85">{displayName}</span>
             <span className="block truncate text-xs text-white/40">
-              {user.gmailConnected ? user.email : 'Gmail not connected'}
+              {!user.gmailConnected ? 'Gmail not connected' : user.gmailReauthRequired ? 'Reconnect Gmail' : user.email}
             </span>
           </span>
         </NavLink>

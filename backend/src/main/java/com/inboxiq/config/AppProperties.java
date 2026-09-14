@@ -46,7 +46,6 @@ public class AppProperties {
         private String tokenEncryptionKey;
         private String corsAllowedOrigins = "http://localhost:5173";
         private String sessionCookieName = "INBOXIQ_SESSION";
-        private long sessionMaxAgeSeconds = 604_800;
         // "Lax" is correct whenever the SPA and API share one origin: local
         // dev (Vite's proxy) and the single-service production image. In
         // production also set COOKIE_SECURE=true. A split-domain deployment
@@ -62,8 +61,6 @@ public class AppProperties {
         public void setCorsAllowedOrigins(String corsAllowedOrigins) { this.corsAllowedOrigins = corsAllowedOrigins; }
         public String getSessionCookieName() { return sessionCookieName; }
         public void setSessionCookieName(String sessionCookieName) { this.sessionCookieName = sessionCookieName; }
-        public long getSessionMaxAgeSeconds() { return sessionMaxAgeSeconds; }
-        public void setSessionMaxAgeSeconds(long sessionMaxAgeSeconds) { this.sessionMaxAgeSeconds = sessionMaxAgeSeconds; }
         public String getCookieSameSite() { return cookieSameSite; }
         public void setCookieSameSite(String cookieSameSite) { this.cookieSameSite = cookieSameSite; }
         public boolean isCookieSecure() { return cookieSecure; }
@@ -88,6 +85,10 @@ public class AppProperties {
         // gpt-4o-mini) on every call, which fails with HTTP 402 on a
         // low-balance account even though real responses are tiny.
         private int maxOutputTokens = 1500;
+        /** Background analyses running at once (see AnalysisQueue). */
+        private int analysisConcurrency = 2;
+        /** Automatic attempts per email before a failed analysis is left for a manual retry. */
+        private int analysisMaxAttempts = 3;
 
         public String getProvider() { return provider; }
         public void setProvider(String provider) { this.provider = provider; }
@@ -109,24 +110,32 @@ public class AppProperties {
         public void setMaxRetries(int maxRetries) { this.maxRetries = maxRetries; }
         public int getMaxOutputTokens() { return maxOutputTokens; }
         public void setMaxOutputTokens(int maxOutputTokens) { this.maxOutputTokens = maxOutputTokens; }
+        public int getAnalysisConcurrency() { return analysisConcurrency; }
+        public void setAnalysisConcurrency(int analysisConcurrency) { this.analysisConcurrency = analysisConcurrency; }
+        public int getAnalysisMaxAttempts() { return analysisMaxAttempts; }
+        public void setAnalysisMaxAttempts(int analysisMaxAttempts) { this.analysisMaxAttempts = analysisMaxAttempts; }
     }
 
+    /** Gmail sync. See EmailSyncService for how first and incremental syncs differ. */
     public static class Gmail {
-        private int initialSyncPageSize = 25;
-        // A brand-new account's very first sync only needs to feel instant
-        // and show something — the full history isn't needed yet.
+        // The first sync of a mailbox fetches only the newest N inbox messages,
+        // whatever the mailbox size. Later syncs are incremental (history API).
         private int firstSyncMessageCap = 20;
-        // Once an account has synced at least once, later syncs pull in
-        // everything since they connected, up to this lifetime cap per
-        // account (keeps Gmail-API-quota and storage usage bounded).
-        private int maxTotalSyncedMessages = 600;
+        // Upper bound on new messages stored by one incremental pass (e.g.
+        // after a long absence): the newest ones are kept.
+        private int maxNewMessagesPerSync = 100;
+        // Mailboxes of users with InboxIQ open are checked this often.
+        private int pollIntervalSeconds = 30;
+        private int fetchConcurrency = 4;
 
-        public int getInitialSyncPageSize() { return initialSyncPageSize; }
-        public void setInitialSyncPageSize(int initialSyncPageSize) { this.initialSyncPageSize = initialSyncPageSize; }
         public int getFirstSyncMessageCap() { return firstSyncMessageCap; }
         public void setFirstSyncMessageCap(int firstSyncMessageCap) { this.firstSyncMessageCap = firstSyncMessageCap; }
-        public int getMaxTotalSyncedMessages() { return maxTotalSyncedMessages; }
-        public void setMaxTotalSyncedMessages(int maxTotalSyncedMessages) { this.maxTotalSyncedMessages = maxTotalSyncedMessages; }
+        public int getMaxNewMessagesPerSync() { return maxNewMessagesPerSync; }
+        public void setMaxNewMessagesPerSync(int maxNewMessagesPerSync) { this.maxNewMessagesPerSync = maxNewMessagesPerSync; }
+        public int getPollIntervalSeconds() { return pollIntervalSeconds; }
+        public void setPollIntervalSeconds(int pollIntervalSeconds) { this.pollIntervalSeconds = pollIntervalSeconds; }
+        public int getFetchConcurrency() { return fetchConcurrency; }
+        public void setFetchConcurrency(int fetchConcurrency) { this.fetchConcurrency = fetchConcurrency; }
     }
 
     public static class Sync {

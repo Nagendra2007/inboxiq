@@ -3,6 +3,7 @@ package com.inboxiq.service;
 import com.inboxiq.entity.MailAccount;
 import com.inboxiq.entity.MailProvider;
 import com.inboxiq.entity.User;
+import com.inboxiq.exception.GmailIntegrationException;
 import com.inboxiq.exception.ResourceNotFoundException;
 import com.inboxiq.repository.MailAccountRepository;
 import com.inboxiq.repository.UserRepository;
@@ -10,6 +11,7 @@ import com.inboxiq.security.TokenEncryptionService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
@@ -74,6 +76,8 @@ public class MailAccountService {
         account.setEncryptedAccessToken(tokenEncryptionService.encrypt(accessToken));
         if (refreshToken != null && !refreshToken.isBlank()) {
             account.setEncryptedRefreshToken(tokenEncryptionService.encrypt(refreshToken));
+            // A fresh grant from Google: Gmail access works again.
+            account.setReauthRequired(false);
         }
         account.setTokenExpiry(accessTokenExpiry);
 
@@ -99,21 +103,83 @@ public class MailAccountService {
         return tokenEncryptionService.decrypt(account.getEncryptedRefreshToken());
     }
 
-    @Transactional
-    public void updateAccessToken(UUID mailAccountId, String newAccessToken, Instant newExpiry) {
-        MailAccount account = mailAccountRepository.findById(mailAccountId)
-                .orElseThrow(() -> new ResourceNotFoundException("Mail account not found"));
-        account.setEncryptedAccessToken(tokenEncryptionService.encrypt(newAccessToken));
-        account.setTokenExpiry(newExpiry);
-        mailAccountRepository.save(account);
+    /**
+     * True when InboxIQ holds a Gmail grant it can keep using without the
+     * user: a refresh token Google hasn't rejected.
+     */
+    public boolean hasUsableGmailGrant(MailAccount account) {
+        return account.getEncryptedRefreshToken() != null && !account.isReauthRequired();
     }
 
-    @Transactional
-    public void updateLastHistoryId(UUID mailAccountId, String historyId) {
-        MailAccount account = mailAccountRepository.findById(mailAccountId)
-                .orElseThrow(() -> new ResourceNotFoundException("Mail account not found"));
-        account.setLastHistoryId(historyId);
-        mailAccountRepository.save(account);
+    // The writes below run in their own transaction (REQUIRES_NEW): they are
+    // made from background sync threads and from inside read-only request
+    // transactions, where a joined write would be silently dropped, or rolled
+    // back along with the request that hit the error they record.
+
+    /**
+     * Stores a refreshed access token and also updates {@code account} itself,
+     * so the caller's copy stays valid for the rest of its work.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void updateAccessToken(MailAccount account, String newAccessToken, Instant newExpiry) {
+        String encrypted = tokenEncryptionService.encrypt(newAccessToken);
+        mailAccountRepository.findById(account.getId()).ifPresent(stored -> {
+            stored.setEncryptedAccessToken(encrypted);
+            stored.setTokenExpiry(newExpiry);
+            mailAccountRepository.save(stored);
+        });
+        account.setEncryptedAccessToken(encrypted);
+        account.setTokenExpiry(newExpiry);
+    }
+
+    /** Forces the next Gmail call to refresh the access token first (after Gmail answered 401). */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void expireAccessToken(UUID mailAccountId) {
+        mailAccountRepository.findById(mailAccountId).ifPresent(account -> {
+            account.setTokenExpiry(null);
+            mailAccountRepository.save(account);
+        });
+    }
+
+    /** Google rejected the stored grant: keep the account, ask the user to reconnect Gmail. */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void markReauthRequired(UUID mailAccountId) {
+        mailAccountRepository.findById(mailAccountId).ifPresent(account -> {
+            if (account.isReauthRequired()) return;
+            account.setReauthRequired(true);
+            account.setLastSyncError(GmailIntegrationException.reauthRequired(null).getMessage());
+            mailAccountRepository.save(account);
+            log.info("Gmail account id={} needs to be reconnected", mailAccountId);
+        });
+    }
+
+    /**
+     * Records a completed sync pass. {@code historyId} becomes the checkpoint
+     * the next pass continues from; it is only ever written here, after every
+     * change up to it has been applied.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void recordSyncSuccess(UUID mailAccountId, String historyId, boolean initialSyncCompleted) {
+        mailAccountRepository.findById(mailAccountId).ifPresent(account -> {
+            if (historyId != null) account.setLastHistoryId(historyId);
+            Instant now = Instant.now();
+            if (initialSyncCompleted && account.getInitialSyncCompletedAt() == null) {
+                account.setInitialSyncCompletedAt(now);
+            }
+            account.setLastSyncAt(now);
+            account.setLastSyncError(null);
+            mailAccountRepository.save(account);
+        });
+    }
+
+    /** Records a failed pass. The checkpoint is left alone, so the next pass redoes the same changes. */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void recordSyncFailure(UUID mailAccountId, String userSafeMessage) {
+        mailAccountRepository.findById(mailAccountId).ifPresent(account -> {
+            account.setLastSyncError(userSafeMessage == null ? null
+                    : userSafeMessage.substring(0, Math.min(500, userSafeMessage.length())));
+            mailAccountRepository.save(account);
+        });
     }
 
     /**
@@ -130,6 +196,7 @@ public class MailAccountService {
         account.setEncryptedAccessToken(null);
         account.setEncryptedRefreshToken(null);
         account.setTokenExpiry(null);
+        account.setReauthRequired(false);
         mailAccountRepository.save(account);
         log.info("Disconnected Gmail account id={}", account.getId());
     }

@@ -5,6 +5,8 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.OnDelete;
+import org.hibernate.annotations.OnDeleteAction;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.Instant;
@@ -32,6 +34,7 @@ public class EmailAnalysis {
 
     @OneToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "email_id", nullable = false, unique = true)
+    @OnDelete(action = OnDeleteAction.CASCADE) // matches the ON DELETE CASCADE in V1__init_schema.sql
     private EmailMessage email;
 
     @Column(name = "summary")
@@ -82,6 +85,10 @@ public class EmailAnalysis {
 
     @Column(name = "ai_model_used")
     private String aiModelUsed;
+
+    /** Times the AI has been asked to analyze this email (bounds automatic retries). */
+    @Column(name = "ai_attempts", nullable = false)
+    private int aiAttempts = 0;
 
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
