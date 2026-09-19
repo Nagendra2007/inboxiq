@@ -14,7 +14,7 @@ import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { useHotkeys } from '../hooks/useHotkeys';
 import { EmailListItem, EmailListSkeleton, isAnalysisPending } from '../components/EmailListItem';
 import { EmailDetailPane } from '../components/EmailDetailPane';
-import { Button } from '../components/ui/Button';
+import { Button, IconButton } from '../components/ui/Button';
 import { ConfirmDialog } from '../components/ui/Dialog';
 import { Alert, EmptyState, Spinner } from '../components/ui/Feedback';
 import { useToast } from '../components/ui/Toast';
@@ -29,6 +29,7 @@ import {
   SendIcon,
   ShieldCheckIcon,
   SparklesIcon,
+  TrashIcon,
   XIcon,
 } from '../components/ui/Icons';
 
@@ -40,6 +41,8 @@ const PAGE_SIZE = INBOX_PAGE_SIZE;
 // Fallback only, while the realtime stream is down: watch for background analysis.
 const LIST_POLL_MS = 5000;
 const LIST_POLL_LIMIT = 24; // ~2 minutes
+// Emails per delete request; the backend refuses more than 100 at a time.
+const BULK_DELETE_BATCH = 50;
 const SYNC_FOLLOW_MS = 2000;
 const SYNC_FOLLOW_LIMIT = 30;
 
@@ -570,13 +573,43 @@ export function InboxPage() {
     [selectedId, updateParams]
   );
 
+  // --- Checked rows (delete several at once) ---
+  const [checkedIds, setCheckedIds] = useState<ReadonlySet<string>>(() => new Set());
+  const checkedCount = checkedIds.size;
+
+  const toggleChecked = useCallback((id: string) => {
+    setCheckedIds((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
+  }, []);
+
+  const clearChecked = useCallback(() => setCheckedIds(new Set()), []);
+  const checkAllLoaded = useCallback(() => setCheckedIds(new Set(emailsRef.current.map((e) => e.id))), []);
+
+  // Rows that left the list (deleted elsewhere, filtered out) shouldn't stay
+  // checked invisibly — the count would stop matching what's on screen.
+  useEffect(() => {
+    setCheckedIds((prev) => {
+      if (prev.size === 0) return prev;
+      const visible = new Set(emails.map((e) => e.id));
+      const next = new Set([...prev].filter((id) => visible.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [emails]);
+
   const searchRef = useRef<HTMLInputElement>(null);
   useHotkeys(
     {
       '/': () => searchRef.current?.focus(),
       j: () => move(1),
       k: () => move(-1),
-      Escape: () => selectedId && select(null),
+      x: () => selectedId && toggleChecked(selectedId),
+      Escape: () => {
+        if (checkedCount > 0) clearChecked();
+        else if (selectedId) select(null);
+      },
     },
     connected
   );
@@ -594,6 +627,13 @@ export function InboxPage() {
   const handleAnalysisChange = useCallback((id: string, analysis: EmailAnalysisDto) => {
     setEmails((prev) => prev.map((e) => (e.id === id ? { ...e, analysis } : e)));
   }, []);
+
+  // The row behind the open email, so the reader can paint before its own
+  // request comes back.
+  const selectedRow = useMemo(
+    () => (selectedId ? emails.find((e) => e.id === selectedId) ?? null : null),
+    [emails, selectedId]
+  );
 
   // --- Delete ---
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
@@ -617,6 +657,46 @@ export function InboxPage() {
       setDeleting(false);
       setPendingDeleteId(null);
     }
+  };
+
+  // --- Delete several ---
+  const [confirmBulk, setConfirmBulk] = useState(false);
+  const [deletingMany, setDeletingMany] = useState(false);
+
+  const confirmBulkDelete = async () => {
+    const ids = [...checkedIds];
+    if (ids.length === 0) return;
+    setDeletingMany(true);
+    const removed: string[] = [];
+    let failed = 0;
+    try {
+      // The backend takes a bounded number per request; a big selection goes
+      // in runs, and each finished run is kept even if a later one fails.
+      for (let i = 0; i < ids.length; i += BULK_DELETE_BATCH) {
+        const result = await EmailApi.bulkDelete(ids.slice(i, i + BULK_DELETE_BATCH));
+        removed.push(...result.deletedIds);
+        failed += result.failed;
+      }
+    } catch (err) {
+      toast.error('Could not delete those emails', errorMessage(err, 'Please try again.'));
+    }
+
+    if (removed.length > 0) {
+      const gone = new Set(removed);
+      setEmails((prev) => prev.filter((e) => !gone.has(e.id)));
+      setTotal((t) => Math.max(0, t - gone.size));
+      if (selectedId && gone.has(selectedId)) select(null);
+      refreshStats();
+      toast.success(
+        `${pluralize(removed.length, 'email')} deleted`,
+        failed > 0
+          ? `They were moved to Trash in Gmail. ${failed} couldn’t be deleted and are still here.`
+          : 'They were also moved to Trash in Gmail.'
+      );
+    }
+    setDeletingMany(false);
+    setConfirmBulk(false);
+    clearChecked();
   };
 
   const clearFilters = () => {
@@ -646,27 +726,55 @@ export function InboxPage() {
         )}
       >
         <header className="shrink-0 space-y-3 border-b border-white/[0.06] px-4 pb-3 pt-4">
-          <div className="flex items-center gap-3">
-            <div className="min-w-0 flex-1">
-              <h1 className="flex items-center gap-2 text-lg font-semibold tracking-tight text-white">
-                Inbox
-                <LiveIndicator status={realtime.status} />
-              </h1>
-              <p className="truncate text-xs text-white/40" aria-live="polite">
-                {subtitle || ' '}
+          {checkedCount > 0 ? (
+            <div className="flex h-[38px] items-center gap-2 animate-fade-in">
+              <IconButton label="Clear selection" size="sm" onClick={clearChecked}>
+                <XIcon className="h-4 w-4" />
+              </IconButton>
+              <p className="min-w-0 flex-1 truncate text-sm font-semibold text-white" aria-live="polite">
+                {checkedCount} selected
+                {checkedCount < emails.length && (
+                  <button
+                    type="button"
+                    onClick={checkAllLoaded}
+                    className="ml-2.5 text-xs font-medium text-accent-300 transition hover:text-accent-200"
+                  >
+                    Select all {emails.length}
+                  </button>
+                )}
               </p>
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={() => setConfirmBulk(true)}
+                icon={<TrashIcon className="h-3.5 w-3.5" />}
+              >
+                Delete
+              </Button>
             </div>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={sync}
-              loading={syncing}
-              icon={<RefreshIcon className="h-3.5 w-3.5" />}
-              title="Fetch new mail from Gmail"
-            >
-              {syncing ? 'Syncing' : 'Sync'}
-            </Button>
-          </div>
+          ) : (
+            <div className="flex items-center gap-3">
+              <div className="min-w-0 flex-1">
+                <h1 className="flex items-center gap-2 text-lg font-semibold tracking-tight text-white">
+                  Inbox
+                  <LiveIndicator status={realtime.status} />
+                </h1>
+                <p className="truncate text-xs text-white/40" aria-live="polite">
+                  {subtitle || '\u00a0'}
+                </p>
+              </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={sync}
+                loading={syncing}
+                icon={<RefreshIcon className="h-3.5 w-3.5" />}
+                title="Fetch new mail from Gmail"
+              >
+                {syncing ? 'Syncing' : 'Sync'}
+              </Button>
+            </div>
+          )}
 
           <div className="relative">
             <SearchIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" />
@@ -813,7 +921,10 @@ export function InboxPage() {
                     key={email.id}
                     email={pollExhausted && isAnalysisPending(email) ? { ...email, analysis: { ...emptyAnalysis } } : email}
                     active={email.id === selectedId}
+                    selected={checkedIds.has(email.id)}
+                    selecting={checkedCount > 0}
                     onSelect={select}
+                    onToggleSelected={toggleChecked}
                     onDelete={setPendingDeleteId}
                   />
                 ))}
@@ -842,6 +953,7 @@ export function InboxPage() {
         {selectedId ? (
           <EmailDetailPane
             emailId={selectedId}
+            preview={selectedRow}
             onClose={() => select(null)}
             onRequestDelete={setPendingDeleteId}
             onLoaded={handleLoaded}
@@ -871,6 +983,19 @@ export function InboxPage() {
           </>
         }
         confirmLabel="Delete email"
+      />
+      <ConfirmDialog
+        open={confirmBulk}
+        onClose={() => !deletingMany && setConfirmBulk(false)}
+        onConfirm={confirmBulkDelete}
+        loading={deletingMany}
+        title={`Delete ${pluralize(checkedCount, 'email')}?`}
+        description={`${
+          checkedCount === 1 ? 'It' : 'They'
+        } will be removed from InboxIQ and moved to Trash in your Gmail, where you can still restore ${
+          checkedCount === 1 ? 'it' : 'them'
+        } for 30 days.`}
+        confirmLabel={deletingMany ? 'Deleting…' : `Delete ${checkedCount}`}
       />
     </div>
   );

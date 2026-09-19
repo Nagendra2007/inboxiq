@@ -5,6 +5,7 @@ import type {
   AdministratorsDto,
   AiSettingsDto,
   AiTestResult,
+  BulkDeleteResultDto,
   UpdateAiSettingsRequest,
   Category,
   DashboardDto,
@@ -61,6 +62,14 @@ export const EmailApi = {
   get: (id: string, signal?: AbortSignal) => apiFetch<EmailDetailDto>(`/api/emails/${id}`, { signal }),
 
   delete: (id: string) => apiFetch<void>(`/api/emails/${id}`, { method: 'DELETE' }),
+
+  /** Deletes a selection. Each email is trashed in Gmail in turn, so allow time. */
+  bulkDelete: (ids: string[]) =>
+    apiFetch<BulkDeleteResultDto>('/api/emails/bulk-delete', {
+      method: 'POST',
+      body: { ids },
+      timeoutMs: LONG_TIMEOUT_MS,
+    }),
 
   analysis: (id: string, signal?: AbortSignal) =>
     apiFetch<EmailAnalysisDto | null>(`/api/emails/${id}/analysis`, { signal }),

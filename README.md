@@ -303,7 +303,9 @@ npm run build   # type-checks (tsc -b) then produces dist/
 - **Responsive:** a two-pane inbox (list + reader) on desktop collapses to a single pane on mobile, with a bottom tab bar replacing the sidebar.
 - **Deep links:** inbox filters and the open email live in the URL (`/inbox?priority=HIGH&email=<id>`), so the dashboard links straight into filtered views and the browser back button closes an email.
 - **Live updates:** one Server-Sent Events connection for the whole app (`context/RealtimeContext.tsx`) delivers new mail, read/delete changes and finished analyses, each applied to just the affected email. If the stream is down, the inbox falls back to polling.
-- **Keyboard:** `C` compose, `/` search, `J`/`K` next/previous email, `Esc` close, `?` shortcut sheet, `Ctrl+Enter` generate a draft.
+- **Keyboard:** `C` compose, `/` search, `J`/`K` next/previous email, `X` select, `Esc` clear the selection or close the email, `?` shortcut sheet, `Ctrl+Enter` generate a draft.
+- **Deleting:** a row's avatar doubles as its checkbox, so any number of emails can go at once; on a phone, swiping a row left does the same for one. Either way the confirmation is the same, and each email is moved to Trash in the real Gmail before InboxIQ drops its copy.
+- **Opening an email is instant:** the reader paints from the row that was clicked — subject, sender, badges and the whole AI summary are already there — and fills in the recipients, to-dos and original message when its request lands, instead of showing a skeleton for a round trip.
 - **Light and dark themes:** dark by default; the **Light mode** switch (sidebar, Settings, sign-in page) is remembered per browser. The palette is CSS variables (`src/index.css`, `html.theme-light`), so components don't carry per-theme classes; `public/assets/theme-init-v1.js` applies a saved theme before first paint.
 - **Resilience:** a sleeping free-tier server shows a "waking up" screen that retries on its own instead of bouncing you to sign-in; an expired session returns you to sign-in with a notice.
 
@@ -322,6 +324,7 @@ npm run build   # type-checks (tsc -b) then produces dist/
 | GET | `/api/emails/search` | Filtered search |
 | GET | `/api/emails/{id}` | Full email detail (marks read) |
 | DELETE | `/api/emails/{id}` | Delete locally and move to Gmail Trash |
+| POST | `/api/emails/bulk-delete` | Same, for a selection (up to 100); reports which ones went |
 | GET | `/api/emails/{id}/thread` | Live Gmail thread view |
 | GET | `/api/emails/{id}/analysis` | Stored analysis |
 | POST | `/api/emails/{id}/analyze` | Force re-analysis |
@@ -352,6 +355,7 @@ npm run build   # type-checks (tsc -b) then produces dist/
 - `EmailSyncIntegrationTest` — against a fake 500-message Gmail: the first sync stores only the newest 20; later syncs apply only history changes and never re-list or re-download the mailbox; an expired checkpoint catches up with the newest messages only; a pass that fails halfway keeps its checkpoint and is redone without duplicates; revoked access flags the account without losing data. `HistoryDeltaTest` covers the history-to-changes reduction.
 - `BackgroundSyncIntegrationTest` — a mailbox nobody is watching is still checked; one checked moments ago, one waiting to be reconnected, one that was disconnected and one nobody has opened in months are all left alone.
 - `InboxReadIntegrationTest` — the two reads on the app's critical path: the inbox page comes back newest-first with each email's analysis and without its body, in a single query rather than one per row, and the dashboard counts cover only the caller's own mailbox.
+- `BulkDeleteIntegrationTest` — deleting a selection trashes each email in Gmail first; one Gmail refuses stays put while the rest go; someone else's email id in the body is never touched.
 - `SessionAndRealtimeIntegrationTest` — sessions are stored in the database behind a 30-day cookie; sign-in doesn't force Google's consent screen but connecting Gmail does; the event stream requires sign-in and only carries the user's own events.
 - `WebSecurityIntegrationTest`, `AdminAiSettingsIntegrationTest` — routing, the 401/CSRF handshake, security headers, admin-only AI settings.
 - `AiResponseParserTest` (malformed/hostile LLM JSON), `PriorityEngineTest`, `RiskRuleEngineTest`, `OpenAiCompatibleClientTest` (provider error handling against a fake HTTP server).

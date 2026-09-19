@@ -53,6 +53,14 @@ public interface EmailRepository extends JpaRepository<EmailMessage, UUID>, JpaS
     @EntityGraph(attributePaths = "analysis")
     Page<EmailMessage> findAll(Specification<EmailMessage> spec, Pageable pageable);
 
+    /**
+     * The caller's own emails among these ids, with their mail account, so a
+     * bulk action can check ownership and reach Gmail without a query per
+     * email. Ids belonging to someone else simply aren't returned.
+     */
+    @Query("select e from EmailMessage e join fetch e.mailAccount a where a.id = :mailAccountId and e.id in :ids")
+    List<EmailMessage> findOwned(@Param("mailAccountId") UUID mailAccountId, @Param("ids") Collection<UUID> ids);
+
     /** The three email totals on the dashboard, in a single round trip. */
     @Query("""
            select new com.inboxiq.repository.EmailCounts(

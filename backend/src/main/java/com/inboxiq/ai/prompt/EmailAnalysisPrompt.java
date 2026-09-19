@@ -25,7 +25,7 @@ public final class EmailAnalysisPrompt {
                 commentary, no extra keys:
 
                 {
-                  "summary": string (2-4 plain-language sentences),
+                  "summary": string (1-2 plain-language sentences, 40 words at the very most — the key points below carry the detail, so say what the email is and what it wants, and stop),
                   "keyPoints": string[] (short bullet phrases, at most 5),
                   "category": one of PERSONAL, WORK, EDUCATION, FINANCE, SHOPPING, DELIVERY, SECURITY, SOCIAL, MARKETING, NEWSLETTER, SUSPICIOUS, OTHER,
                   "priorityHint": one of HIGH, MEDIUM, LOW — your best-guess priority; the application combines this with rule-based signals (sender, deadlines, keywords) to compute the final priority, so this is a hint, not the final answer,

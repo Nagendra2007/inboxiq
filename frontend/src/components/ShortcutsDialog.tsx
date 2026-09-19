@@ -14,7 +14,8 @@ const GROUPS: { title: string; items: { keys: string[]; label: string }[] }[] = 
       { keys: ['/'], label: 'Search' },
       { keys: ['J'], label: 'Next email' },
       { keys: ['K'], label: 'Previous email' },
-      { keys: ['Esc'], label: 'Close the open email' },
+      { keys: ['X'], label: 'Select the open email' },
+      { keys: ['Esc'], label: 'Clear the selection, or close the email' },
     ],
   },
   {

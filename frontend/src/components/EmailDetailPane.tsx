@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { EmailApi, ActionItemApi } from '../api/endpoints';
 import { errorMessage, isAbortError } from '../api/client';
 import { useRealtime, useRealtimeEvent } from '../context/RealtimeContext';
-import type { EmailAnalysisDto, EmailDetailDto, ThreadMessageDto } from '../types';
+import type { EmailAnalysisDto, EmailDetailDto, EmailSummaryDto, ThreadMessageDto } from '../types';
 import { cn } from '../lib/cn';
 import { deadlineInfo, formatFullDate, formatListTime, parseSender } from '../lib/format';
 import { CategoryPill, PriorityBadge, RiskBadge, SignalPill } from './Badges';
@@ -33,6 +33,33 @@ const ANALYSIS_POLL_LIMIT = 40; // ~2 minutes
 /** No analysis yet also counts: opening an email that was never analyzed starts its analysis. */
 function isPending(analysis: EmailAnalysisDto | null | undefined): boolean {
   return !analysis || analysis.analysisStatus === 'PENDING';
+}
+
+/**
+ * Everything this pane shows above the fold — subject, badges, sender, the
+ * risk notice, the whole AI summary — is already in the row the user just
+ * clicked. So the pane opens with that straight away and fills in the rest
+ * (the recipients, the action items, the original message, which is
+ * collapsed anyway) when the request lands, instead of showing a skeleton
+ * for a round trip.
+ */
+function fromListRow(row: EmailSummaryDto): EmailDetailDto {
+  return {
+    id: row.id,
+    sender: row.sender,
+    recipient: null,
+    ccRecipient: null,
+    subject: row.subject,
+    snippet: row.snippet,
+    bodyText: null,
+    bodyHtml: null,
+    receivedAt: row.receivedAt,
+    read: row.read,
+    hasAttachments: row.hasAttachments,
+    threadId: null,
+    analysis: row.analysis,
+    actionItems: [],
+  };
 }
 
 function DetailSkeleton() {
@@ -143,12 +170,15 @@ function ThreadView({ emailId }: { emailId: string }) {
 
 export function EmailDetailPane({
   emailId,
+  preview,
   onClose,
   onRequestDelete,
   onLoaded,
   onAnalysisChange,
 }: {
   emailId: string;
+  /** The list row for this email, so the pane can open before the fetch lands. */
+  preview?: EmailSummaryDto | null;
   onClose: () => void;
   onRequestDelete: (id: string) => void;
   /** Called once the email is fetched (the backend marks it read at that point). */
@@ -156,7 +186,11 @@ export function EmailDetailPane({
   onAnalysisChange?: (id: string, analysis: EmailAnalysisDto) => void;
 }) {
   const toast = useToast();
-  const [email, setEmail] = useState<EmailDetailDto | null>(null);
+  const previewRef = useRef(preview);
+  previewRef.current = preview;
+  const [email, setEmail] = useState<EmailDetailDto | null>(() => (preview ? fromListRow(preview) : null));
+  /** False while what's on screen is still only the list row's copy. */
+  const [hydrated, setHydrated] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reanalyzing, setReanalyzing] = useState(false);
@@ -175,6 +209,7 @@ export function EmailDetailPane({
       try {
         const data = await EmailApi.get(emailId, signal);
         setEmail(data);
+        setHydrated(true);
         callbacks.current.onLoaded?.(data);
       } catch (err) {
         if (isAbortError(err)) return;
@@ -188,13 +223,15 @@ export function EmailDetailPane({
 
   useEffect(() => {
     const controller = new AbortController();
-    setEmail(null);
+    const row = previewRef.current;
+    setEmail(row && row.id === emailId ? fromListRow(row) : null);
+    setHydrated(false);
     setShowThread(false);
     setShowOriginal(false);
     scrollRef.current?.scrollTo({ top: 0 });
     load(controller.signal);
     return () => controller.abort();
-  }, [load]);
+  }, [emailId, load]);
 
   // Emails are analyzed in the background. The result is pushed over the
   // realtime stream; only this email is updated.
@@ -316,7 +353,9 @@ export function EmailDetailPane({
     </div>
   );
 
-  if (loading) {
+  // Only when there's nothing to show yet — with the list row in hand the
+  // pane renders at once and fills in the rest as it arrives.
+  if (loading && !email) {
     return (
       <div className="flex h-full flex-col">
         {toolbar}
@@ -376,8 +415,16 @@ export function EmailDetailPane({
                   {sender.email && <span className="ml-1.5 text-white/40">&lt;{sender.email}&gt;</span>}
                 </p>
                 <p className="truncate text-xs text-white/40">
-                  {email.recipient ? `to ${email.recipient}` : 'to me'}
-                  {email.ccRecipient && ` · cc ${email.ccRecipient}`}
+                  {hydrated ? (
+                    <>
+                      {email.recipient ? `to ${email.recipient}` : 'to me'}
+                      {email.ccRecipient && ` · cc ${email.ccRecipient}`}
+                    </>
+                  ) : (
+                    // Holds the line's height until the recipients arrive,
+                    // rather than showing "to me" and then correcting itself.
+                    ' '
+                  )}
                 </p>
               </div>
               <time dateTime={email.receivedAt ?? undefined} className="hidden shrink-0 text-xs text-white/40 sm:block">
@@ -529,7 +576,13 @@ export function EmailDetailPane({
             </button>
             {showOriginal && (
               <div className="border-t border-white/[0.06] p-4 animate-fade-in">
-                {email.bodyHtml ? (
+                {!hydrated ? (
+                  <div className="space-y-2 px-1" aria-hidden="true">
+                    <span className="skeleton block h-3.5 w-full" />
+                    <span className="skeleton block h-3.5 w-11/12" />
+                    <span className="skeleton block h-3.5 w-3/4" />
+                  </div>
+                ) : email.bodyHtml ? (
                   <div className="overflow-x-auto rounded-xl bg-paper px-5 py-4 shadow-inner ring-1 ring-white/[0.06]">
                     <div className="email-html" dangerouslySetInnerHTML={{ __html: email.bodyHtml }} />
                   </div>

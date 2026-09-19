@@ -135,6 +135,12 @@ export interface EmailAnalysisDto {
   failureReason: string | null;
 }
 
+/** What a "delete selected" managed to remove; the rest stay on screen. */
+export interface BulkDeleteResultDto {
+  deletedIds: string[];
+  failed: number;
+}
+
 export interface EmailSummaryDto {
   id: string;
   sender: string | null;

@@ -1,6 +1,8 @@
 package com.inboxiq.controller;
 
 import com.inboxiq.dto.AdjustReplyRequest;
+import com.inboxiq.dto.BulkDeleteRequest;
+import com.inboxiq.dto.BulkDeleteResultDto;
 import com.inboxiq.dto.EmailAnalysisDto;
 import com.inboxiq.dto.EmailDetailDto;
 import com.inboxiq.dto.EmailSummaryDto;
@@ -30,6 +32,8 @@ import com.inboxiq.service.RateLimiterService;
 import com.inboxiq.service.ReplyService;
 import com.inboxiq.service.SearchService;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -48,6 +52,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.http.HttpStatus;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -62,6 +67,8 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/emails")
 public class EmailController {
+
+    private static final Logger log = LoggerFactory.getLogger(EmailController.class);
 
     private final CurrentUserProvider currentUserProvider;
     private final MailAccountService mailAccountService;
@@ -166,6 +173,37 @@ public class EmailController {
         EmailMessage email = ownedEmailOrThrow(id);
         gmailInboxClient.trashMessage(email.getMailAccount(), email.getProviderMessageId());
         emailRepository.delete(email);
+    }
+
+    /**
+     * Deletes several emails at once, exactly as {@link #delete} does one:
+     * each is moved to Trash in the user's real Gmail first, and only then
+     * removed locally, so the two never drift apart.
+     *
+     * Deliberately not one transaction over the whole selection. Each email
+     * is independent, and Gmail can refuse one of them (a message deleted in
+     * another client a second ago, a momentary API error) without that being
+     * a reason to keep the others. The response says which ones went, and
+     * the caller leaves the rest on screen.
+     */
+    @PostMapping("/bulk-delete")
+    public BulkDeleteResultDto bulkDelete(@Valid @RequestBody BulkDeleteRequest request) {
+        MailAccount account = currentAccount();
+        List<EmailMessage> owned = emailRepository.findOwned(account.getId(), request.ids());
+
+        List<UUID> deleted = new ArrayList<>();
+        int failed = request.ids().size() - owned.size(); // ids that aren't the caller's, or are already gone
+        for (EmailMessage email : owned) {
+            try {
+                gmailInboxClient.trashMessage(email.getMailAccount(), email.getProviderMessageId());
+                emailRepository.deleteById(email.getId());
+                deleted.add(email.getId());
+            } catch (RuntimeException e) {
+                failed++;
+                log.warn("Could not delete email id={} as part of a selection: {}", email.getId(), e.toString());
+            }
+        }
+        return new BulkDeleteResultDto(deleted, failed);
     }
 
     @GetMapping("/{id}/analysis")
