@@ -1,15 +1,14 @@
 import { cn } from '../../lib/cn';
 import { initials } from '../../lib/format';
 
-// Muted tints only; rose/red and lime are left out so an avatar never
-// reads as a risk signal or as the brand accent.
+// Muted tints only. Rose/red stays out so an avatar never reads as a risk
+// signal, and violet/indigo stay out so one never reads as the brand accent
+// — which is why this list changed when the accent did.
 const TINTS = [
   'bg-sky-400/15 text-sky-200',
-  'bg-violet-400/15 text-violet-200',
   'bg-emerald-400/15 text-emerald-200',
   'bg-cyan-400/15 text-cyan-200',
   'bg-fuchsia-400/15 text-fuchsia-200',
-  'bg-indigo-400/15 text-indigo-200',
   'bg-teal-400/15 text-teal-200',
   'bg-orange-400/15 text-orange-200',
   'bg-blue-400/15 text-blue-200',

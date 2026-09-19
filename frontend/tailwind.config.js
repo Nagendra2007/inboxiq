@@ -41,19 +41,22 @@ export default {
         // theme strengthens those alphas a little (--fg-alpha-boost) because
         // dark-on-light at the same alpha reads fainter than light-on-dark.
         white: 'rgb(var(--fg) / calc(<alpha-value> * var(--fg-alpha-boost)))',
-        // Lime accent. Fills keep the brand lime on both themes; text and
-        // focus/selection lines use theme-aware steps (see below).
+        // Indigo accent. Fills keep the same indigo on both themes — it is
+        // dark enough to carry white lettering either way, which lime never
+        // was; text and focus/selection lines use theme-aware steps (below).
+        // 400/500/600 are the button's hover/rest/active and every one of
+        // them clears 4.5:1 against white.
         accent: {
-          50: '#f8ffe0',
-          100: '#eeffc2',
-          200: '#e6ff99',
-          300: '#ddff70',
-          400: '#d1ff3d',
-          500: '#c8ff00',
-          600: '#a3d600',
-          700: '#7ea300',
-          800: '#5c7700',
-          900: '#3d4f00',
+          50: '#f3f2fe',
+          100: '#e7e4fd',
+          200: '#d1ccfb',
+          300: '#a99cf7',
+          400: '#6b5dec',
+          500: '#5d4fe0',
+          600: '#4d3fc4',
+          700: '#4034a2',
+          800: '#332a80',
+          900: '#221c55',
         },
         // Surfaces. Dark: 900 is the page, 800 raised panels, 750/700 hovered
         // or floating, 600+ controls. Light: the same roles on a light page.
@@ -68,9 +71,12 @@ export default {
           500: v('ink-500'),
           400: v('ink-400'),
         },
-        // Theme-independent: dark text on the lime/green fills, white text on
-        // the red danger fill, and the white "paper" email bodies render on.
-        'on-accent': '#05090b',
+        // Theme-independent lettering. 'on-accent' rides the indigo fills and
+        // the red danger fill; 'on-bright' is for the few pale fills (the
+        // success button, the theme switch knob) where white would vanish.
+        // 'paper' is the white an email body renders on.
+        'on-accent': '#ffffff',
+        'on-bright': '#0b0c14',
         'on-danger': '#ffffff',
         paper: '#ffffff',
         // Status steps are fixed across themes (validated for both surfaces;
@@ -108,7 +114,7 @@ export default {
       },
       boxShadow: {
         elevated: 'var(--shadow-elevated)',
-        glow: '0 0 0 1px rgba(200,255,0,0.35), 0 10px 30px -10px rgba(200,255,0,0.45)',
+        glow: '0 0 0 1px rgba(93,79,224,0.45), 0 10px 30px -10px rgba(93,79,224,0.65)',
         inset: 'var(--shadow-inset)',
       },
       keyframes: {

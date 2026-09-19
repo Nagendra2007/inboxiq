@@ -16,7 +16,8 @@ function SwitchTrack({ on, className }: { on: boolean; className?: string }) {
       <span
         className={cn(
           'flex h-4 w-4 items-center justify-center rounded-full bg-paper shadow-sm transition-transform duration-200',
-          on ? 'translate-x-[17px] text-accent-800' : 'translate-x-px text-on-accent'
+          // The knob is white in both states, so both icons take dark ink.
+          on ? 'translate-x-[17px] text-accent-800' : 'translate-x-px text-on-bright'
         )}
       >
         {on ? <SunIcon className="h-2.5 w-2.5" strokeWidth={2.5} /> : <MoonIcon className="h-2.5 w-2.5" strokeWidth={2.5} />}

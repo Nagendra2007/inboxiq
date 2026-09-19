@@ -12,7 +12,7 @@ export const THEME_STORAGE_KEY = 'inboxiq-theme';
 export const THEME_CHANGE_EVENT = 'inboxiq:theme';
 
 // Browser UI (mobile address bar) colors: each theme's page background.
-const THEME_COLOR: Record<Theme, string> = { dark: '#05090b', light: '#f3f5f4' };
+const THEME_COLOR: Record<Theme, string> = { dark: '#08090e', light: '#f4f5fa' };
 
 export function currentTheme(): Theme {
   return document.documentElement.classList.contains('theme-light') ? 'light' : 'dark';
