@@ -178,8 +178,11 @@
   .kbd {
     @apply inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded border border-white/10 bg-white/[0.04] px-1 font-sans text-[10px] font-semibold text-white/50;
   }
+  /* Section labels. At 35% these sat under 4.5:1 on the dark ground —
+     small uppercase type has the least margin for that, so they run a
+     step brighter and stay clearly secondary to the text they head. */
   .eyebrow {
-    @apply text-2xs font-semibold uppercase tracking-[0.08em] text-white/35;
+    @apply text-2xs font-semibold uppercase tracking-[0.08em] text-white/45;
   }
   .skeleton {
     @apply relative block overflow-hidden rounded-md bg-white/[0.05];

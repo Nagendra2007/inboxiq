@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { EmailApi, GmailApi, type SearchFilters } from '../api/endpoints';
 import { errorMessage, isAbortError, startGmailConnect } from '../api/client';
@@ -9,6 +9,7 @@ import { useRealtime, useRealtimeEvent, type RealtimeStatus } from '../context/R
 import type {
   BulkActionResultDto,
   Category,
+  DashboardDto,
   EmailAnalysisDto,
   EmailDetailDto,
   EmailSummaryDto,
@@ -18,7 +19,7 @@ import type {
 } from '../types';
 import { cn } from '../lib/cn';
 import { INBOX_PAGE_SIZE } from '../lib/constants';
-import { formatTimeAgo, pluralize, titleCase } from '../lib/format';
+import { formatCount, formatTimeAgo, listDayLabel, pluralize, titleCase } from '../lib/format';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { useHotkeys } from '../hooks/useHotkeys';
 import { EmailListItem, EmailListSkeleton, isAnalysisPending } from '../components/EmailListItem';
@@ -180,27 +181,66 @@ function LiveIndicator({ status }: { status: RealtimeStatus }) {
   );
 }
 
-function ReaderEmptyState() {
+/**
+ * Half the window, whenever no email is open. Rather than an icon and an
+ * apology, it's the three questions the analysis can already answer —
+ * what's unread, what's urgent, what looks unsafe — each one a way into the
+ * list it sits beside. The counts come from the sidebar stats that are
+ * loaded anyway, so this costs no request of its own.
+ */
+function ReaderStartHere({ stats, onPick }: { stats: DashboardDto | null; onPick: (filter: string) => void }) {
+  const routes = [
+    { key: 'unread', label: 'Unread', value: stats?.unreadEmails, tone: 'text-accent-300', hint: 'Not opened yet' },
+    { key: 'priority', label: 'High priority', value: stats?.highPriority, tone: 'text-status-warning', hint: 'Worth doing first' },
+    { key: 'risk', label: 'Flagged', value: stats?.highRisk, tone: 'text-status-critical', hint: 'Check before acting' },
+  ];
+
   return (
-    <div className="flex h-full flex-col items-center justify-center px-8 text-center">
-      <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl border border-white/[0.06] bg-white/[0.02] text-white/30">
-        <InboxIcon className="h-6 w-6" />
-      </div>
-      <p className="text-sm font-semibold text-white/75">Select an email to read</p>
-      <p className="mt-1.5 max-w-xs text-sm leading-relaxed text-white/40">
-        InboxIQ summarizes each message, flags possible risks, and drafts replies for you to approve.
-      </p>
-      <div className="mt-6 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs text-white/35">
-        <span className="flex items-center gap-1.5">
-          <kbd className="kbd">J</kbd>
-          <kbd className="kbd">K</kbd> navigate
-        </span>
-        <span className="flex items-center gap-1.5">
-          <kbd className="kbd">/</kbd> search
-        </span>
-        <span className="flex items-center gap-1.5">
-          <kbd className="kbd">C</kbd> compose
-        </span>
+    <div className="flex h-full flex-col items-center justify-center px-8">
+      <div className="w-full max-w-md">
+        <div className="mb-6 flex items-center gap-3">
+          <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/[0.06] bg-white/[0.02] text-accent-400">
+            <SparklesIcon className="h-5 w-5" />
+          </span>
+          <div>
+            <p className="text-sm font-semibold text-white/85">Nothing open</p>
+            <p className="text-sm text-white/40">Pick an email, or start from here.</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-2.5">
+          {routes.map(({ key, label, value, tone, hint }) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => onPick(key)}
+              disabled={value === undefined}
+              className="card group p-3.5 text-left transition hover:border-white/[0.12] hover:bg-ink-750 disabled:cursor-default disabled:opacity-60"
+            >
+              <p className={cn('text-[26px] font-semibold leading-none tracking-tight tabular-nums', tone)}>
+                {value === undefined ? '—' : formatCount(value)}
+              </p>
+              <p className="mt-2 text-xs font-medium text-white/70">{label}</p>
+              <p className="mt-0.5 text-[11px] leading-snug text-white/35">{hint}</p>
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-white/[0.06] pt-4 text-xs text-white/35">
+          <span className="flex items-center gap-1.5">
+            <kbd className="kbd">J</kbd>
+            <kbd className="kbd">K</kbd> navigate
+          </span>
+          <span className="flex items-center gap-1.5">
+            <kbd className="kbd">E</kbd> archive
+          </span>
+          <span className="flex items-center gap-1.5">
+            <kbd className="kbd">/</kbd> search
+          </span>
+          <span className="flex items-center gap-1.5">
+            <kbd className="kbd">C</kbd> compose
+          </span>
+        </div>
       </div>
     </div>
   );
@@ -1110,19 +1150,34 @@ export function InboxPage() {
           {phase === 'ready' && emails.length > 0 && (
             <>
               <ul>
-                {emails.map((email) => (
-                  <EmailListItem
-                    key={email.id}
-                    email={pollExhausted && isAnalysisPending(email) ? { ...email, analysis: { ...emptyAnalysis } } : email}
-                    active={email.id === selectedId}
-                    selected={checkedIds.has(email.id)}
-                    selecting={checkedCount > 0}
-                    onSelect={select}
-                    onToggleSelected={toggleChecked}
-                    onArchive={archiveOne}
-                    onDelete={setPendingDeleteId}
-                  />
-                ))}
+                {emails.map((email, index) => {
+                  const day = listDayLabel(email.receivedAt);
+                  const startsDay = index === 0 || day !== listDayLabel(emails[index - 1].receivedAt);
+                  return (
+                    <Fragment key={email.id}>
+                      {/* Sticky, so you always know how far back you've
+                          scrolled without reading timestamps. */}
+                      {startsDay && (
+                        <li
+                          className="eyebrow sticky top-0 z-10 border-b border-white/[0.04] bg-ink-850/85 px-4 py-1.5 backdrop-blur"
+                          aria-hidden="true"
+                        >
+                          {day}
+                        </li>
+                      )}
+                      <EmailListItem
+                        email={pollExhausted && isAnalysisPending(email) ? { ...email, analysis: { ...emptyAnalysis } } : email}
+                        active={email.id === selectedId}
+                        selected={checkedIds.has(email.id)}
+                        selecting={checkedCount > 0}
+                        onSelect={select}
+                        onToggleSelected={toggleChecked}
+                        onArchive={archiveOne}
+                        onDelete={setPendingDeleteId}
+                      />
+                    </Fragment>
+                  );
+                })}
               </ul>
               <div ref={sentinelRef} className="flex h-16 items-center justify-center text-xs text-white/30">
                 {loadingMore ? (
@@ -1156,7 +1211,16 @@ export function InboxPage() {
             onAnalysisChange={handleAnalysisChange}
           />
         ) : (
-          <ReaderEmptyState />
+          <ReaderStartHere
+            stats={stats}
+            onPick={(filter) =>
+              updateParams({
+                unread: filter === 'unread' ? '1' : null,
+                priority: filter === 'priority' ? 'HIGH' : null,
+                risk: filter === 'risk' ? 'HIGH' : null,
+              })
+            }
+          />
         )}
       </section>
 

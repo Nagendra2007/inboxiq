@@ -5,6 +5,28 @@ function startOfDay(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
 
+/**
+ * The heading a message sits under in the list: "Today", "Yesterday", the
+ * weekday within the last week, then the date. Coarser than
+ * {@link formatListTime} on purpose — a run of thirty emails wants a handful
+ * of headings, not one per row.
+ */
+export function listDayLabel(iso: string | null): string {
+  if (!iso) return 'Undated';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return 'Undated';
+  const now = new Date();
+  const dayDiff = Math.round((startOfDay(now).getTime() - startOfDay(date).getTime()) / DAY);
+  if (dayDiff <= 0) return 'Today';
+  if (dayDiff === 1) return 'Yesterday';
+  if (dayDiff < 7) return date.toLocaleDateString(undefined, { weekday: 'long' });
+  // Past the last week, the exact day stops being how anyone thinks about
+  // old mail — and a heading per day would outnumber the emails under them.
+  if (date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth()) return 'Earlier this month';
+  if (date.getFullYear() === now.getFullYear()) return date.toLocaleDateString(undefined, { month: 'long' });
+  return date.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+}
+
 /** Gmail-style list timestamp: time today, "Yesterday", weekday this week, then a date. */
 export function formatListTime(iso: string | null): string {
   if (!iso) return '';

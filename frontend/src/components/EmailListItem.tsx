@@ -4,7 +4,7 @@ import { cn } from '../lib/cn';
 import { formatListTime, parseSender } from '../lib/format';
 import { useSwipeToDelete } from '../hooks/useSwipeToDelete';
 import { Avatar } from './ui/Avatar';
-import { ArchiveIcon, CheckIcon, InboxIcon, SparklesIcon, TrashIcon } from './ui/Icons';
+import { ArchiveIcon, CheckIcon, InboxIcon, PaperclipIcon, ReplyIcon, SparklesIcon, TrashIcon } from './ui/Icons';
 
 /**
  * Queued or running in the background. New emails arrive with a PENDING
@@ -16,9 +16,24 @@ export function isAnalysisPending(email: Pick<EmailSummaryDto, 'analysis'>): boo
 }
 
 /**
- * Intentionally minimal, per the original "that's all" brief: sender,
- * subject, a multi-line AI summary, and the time — nothing else.
- * Priority/risk/category live in the detail pane, not cluttering the row.
+ * A hairline down the left edge for the one thing that costs something to
+ * miss in a list: an email the risk engine flagged. Priority deliberately
+ * gets no rail — it's already carried by the order and the summary, and a
+ * row striped for every signal stops meaning anything.
+ */
+function riskRail(email: EmailSummaryDto): string | null {
+  if (isAnalysisPending(email)) return null;
+  if (email.analysis?.riskLevel === 'HIGH') return 'bg-status-critical';
+  if (email.analysis?.riskLevel === 'MEDIUM') return 'bg-status-warning';
+  return null;
+}
+
+/**
+ * Sender, subject, the AI summary and the time — plus the two or three
+ * marks that change what you'd do before opening it: a risk rail, a reply
+ * arrow, a paperclip. Everything else the analysis found (the score, the
+ * category, the reasons) stays in the detail pane; a list where every row
+ * is decorated is a list you stop reading.
  *
  * Two ways to remove one: the trash button on hover, or — on a phone —
  * swiping the row to the left. Either way the confirmation is the same.
@@ -48,6 +63,8 @@ export const EmailListItem = memo(function EmailListItem({
   const pending = isAnalysisPending(email);
   const summary = email.analysis?.summary || email.snippet;
   const unread = !email.read;
+  const rail = riskRail(email);
+  const needsReply = !pending && email.analysis?.requiresReply === true;
   // Swiping is for reaching one email; during a selection the checkboxes are
   // the point, and a stray swipe would fight them.
   const swipe = useSwipeToDelete(() => onDelete(email.id), !selecting);
@@ -86,11 +103,16 @@ export const EmailListItem = memo(function EmailListItem({
             selected ? 'bg-accent-500/[0.08]' : active ? 'bg-white/[0.06]' : 'hover:bg-white/[0.025]'
           )}
         >
-          {active && <span className="absolute inset-y-0 left-0 w-0.5 bg-accent-500" aria-hidden="true" />}
+          {/* One rail, two meanings: which row is open wins over the risk
+              flag, since you're already looking at the thing it warns about. */}
+          {(active || rail) && (
+            <span className={cn('absolute inset-y-0 left-0 w-0.5', active ? 'bg-accent-500' : rail)} aria-hidden="true" />
+          )}
           <span className="relative mt-0.5">
             <Avatar name={sender.name} seed={sender.email || sender.name} size="md" />
             {unread && !selected && (
               <span
+                role="img"
                 className="absolute -left-1 -top-0.5 h-2.5 w-2.5 rounded-full bg-accent-500 ring-2 ring-ink-850"
                 aria-label="Unread"
               />
@@ -105,8 +127,24 @@ export const EmailListItem = memo(function EmailListItem({
                 {formatListTime(email.receivedAt)}
               </span>
             </span>
-            <span className={cn('mt-0.5 block truncate text-[13px]', unread ? 'font-medium text-white/85' : 'text-white/50')}>
-              {email.subject || '(no subject)'}
+            <span className="mt-0.5 flex items-center gap-1.5">
+              <span className={cn('min-w-0 flex-1 truncate text-[13px]', unread ? 'font-medium text-white/85' : 'text-white/50')}>
+                {email.subject || '(no subject)'}
+              </span>
+              {/* Two things worth knowing before opening it, and nothing
+                  else. The icons carry their own name: Icons render
+                  aria-hidden, so the label has to live on the wrapper. */}
+              {rail && <span className="sr-only">Flagged as possibly risky</span>}
+              {needsReply && (
+                <span role="img" aria-label="Looks like it needs a reply" title="Looks like it needs a reply" className="shrink-0">
+                  <ReplyIcon className="h-3.5 w-3.5 text-accent-400/70" />
+                </span>
+              )}
+              {email.hasAttachments && (
+                <span role="img" aria-label="Has attachments" title="Has attachments" className="shrink-0">
+                  <PaperclipIcon className="h-3.5 w-3.5 text-white/30" />
+                </span>
+              )}
             </span>
             {pending ? (
               <span className="mt-1.5 flex items-center gap-1.5 text-xs text-white/35">
