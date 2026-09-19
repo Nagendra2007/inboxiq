@@ -10,6 +10,7 @@ import com.inboxiq.entity.ActionItem;
 import com.inboxiq.entity.EmailAnalysis;
 import com.inboxiq.entity.EmailMessage;
 import com.inboxiq.entity.GeneratedReply;
+import com.inboxiq.repository.EmailSummaryRow;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -40,6 +41,20 @@ public class EmailMapper {
                 email.isRead(),
                 email.isHasAttachments(),
                 toAnalysisDto(email.getAnalysis())
+        );
+    }
+
+    /** The same summary, from the inbox list's single-query projection. */
+    public EmailSummaryDto toSummaryDto(EmailSummaryRow row) {
+        return new EmailSummaryDto(
+                row.id(),
+                row.sender(),
+                row.subject(),
+                row.snippet(),
+                row.receivedAt(),
+                row.read(),
+                row.hasAttachments(),
+                toAnalysisDto(row.analysis())
         );
     }
 

@@ -108,7 +108,7 @@ public class EmailController {
                                        @RequestParam(defaultValue = "20") int size) {
         MailAccount account = currentAccount();
         Pageable pageable = PageRequest.of(page, Math.min(size, 100));
-        return emailRepository.findByMailAccountIdOrderByReceivedAtDesc(account.getId(), pageable)
+        return emailRepository.findSummaries(account.getId(), pageable)
                 .map(emailMapper::toSummaryDto);
     }
 

@@ -204,6 +204,16 @@ app:
     # How often mailboxes of users who have InboxIQ open are checked for new
     # mail. Each check is one cheap history call.
     poll-interval-seconds: ${GMAIL_POLL_SECONDS:30}
+    # How often the mailboxes of users who are AWAY are checked, so new mail
+    # is fetched and analyzed while the app is closed and is simply already
+    # there at the next sign-in. Each check is the same cheap history call.
+    # 0 turns background checks off (sync then only happens while the app is
+    # open). Needs a host that keeps the app running when nobody is using it.
+    background-poll-minutes: ${GMAIL_BACKGROUND_POLL_MINUTES:5}
+    # Background checks stop for a mailbox nobody has opened in this long, so
+    # an abandoned account stops spending Gmail quota and AI credits. Signing
+    # in again revives it.
+    background-active-days: ${GMAIL_BACKGROUND_ACTIVE_DAYS:30}
     # Parallel message downloads within one sync pass.
     fetch-concurrency: 4
 

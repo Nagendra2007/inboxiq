@@ -126,6 +126,15 @@ public class AppProperties {
         private int maxNewMessagesPerSync = 100;
         // Mailboxes of users with InboxIQ open are checked this often.
         private int pollIntervalSeconds = 30;
+        // Mailboxes of users who are away are checked this often, so new mail
+        // is fetched and analyzed while the app is closed. 0 disables it.
+        private int backgroundPollMinutes = 5;
+        // Background checks stop for a mailbox nobody has used in this long
+        // (signing in again revives it). Keeps an abandoned deployment from
+        // spending Gmail quota and AI credits indefinitely.
+        private int backgroundActiveDays = 30;
+        // Upper bound on mailboxes started per background tick.
+        private int backgroundBatchSize = 50;
         private int fetchConcurrency = 4;
 
         public int getFirstSyncMessageCap() { return firstSyncMessageCap; }
@@ -134,6 +143,12 @@ public class AppProperties {
         public void setMaxNewMessagesPerSync(int maxNewMessagesPerSync) { this.maxNewMessagesPerSync = maxNewMessagesPerSync; }
         public int getPollIntervalSeconds() { return pollIntervalSeconds; }
         public void setPollIntervalSeconds(int pollIntervalSeconds) { this.pollIntervalSeconds = pollIntervalSeconds; }
+        public int getBackgroundPollMinutes() { return backgroundPollMinutes; }
+        public void setBackgroundPollMinutes(int backgroundPollMinutes) { this.backgroundPollMinutes = backgroundPollMinutes; }
+        public int getBackgroundActiveDays() { return backgroundActiveDays; }
+        public void setBackgroundActiveDays(int backgroundActiveDays) { this.backgroundActiveDays = backgroundActiveDays; }
+        public int getBackgroundBatchSize() { return backgroundBatchSize; }
+        public void setBackgroundBatchSize(int backgroundBatchSize) { this.backgroundBatchSize = backgroundBatchSize; }
         public int getFetchConcurrency() { return fetchConcurrency; }
         public void setFetchConcurrency(int fetchConcurrency) { this.fetchConcurrency = fetchConcurrency; }
     }

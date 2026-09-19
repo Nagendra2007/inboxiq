@@ -1,8 +1,6 @@
 package com.inboxiq.repository;
 
 import com.inboxiq.entity.EmailAnalysis;
-import com.inboxiq.entity.Priority;
-import com.inboxiq.entity.RiskLevel;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -44,9 +42,17 @@ public interface EmailAnalysisRepository extends JpaRepository<EmailAnalysis, UU
                                                      @Param("syncedAfter") Instant syncedAfter,
                                                      Pageable pageable);
 
-    long countByEmail_MailAccountIdAndPriority(UUID mailAccountId, Priority priority);
-
-    long countByEmail_MailAccountIdAndRiskLevel(UUID mailAccountId, RiskLevel riskLevel);
-
-    long countByEmail_MailAccountIdAndRequiresReplyTrue(UUID mailAccountId);
+    /** The six analysis totals on the dashboard, in a single round trip. */
+    @Query("""
+            select new com.inboxiq.repository.AnalysisCounts(
+                   count(case when a.priority = com.inboxiq.entity.Priority.HIGH then 1 end),
+                   count(case when a.priority = com.inboxiq.entity.Priority.MEDIUM then 1 end),
+                   count(case when a.priority = com.inboxiq.entity.Priority.LOW then 1 end),
+                   count(case when a.riskLevel = com.inboxiq.entity.RiskLevel.HIGH then 1 end),
+                   count(case when a.riskLevel = com.inboxiq.entity.RiskLevel.MEDIUM then 1 end),
+                   count(case when a.requiresReply = true then 1 end))
+            from EmailAnalysis a join a.email e
+            where e.mailAccount.id = :mailAccountId
+            """)
+    AnalysisCounts countsFor(@Param("mailAccountId") UUID mailAccountId);
 }

@@ -8,6 +8,8 @@ public enum SyncTrigger {
     CONNECT,
     /** Periodic check while the user has InboxIQ open. */
     POLL,
+    /** Periodic check while the user is away, so mail keeps arriving with the app closed. */
+    BACKGROUND,
     /** The Sync button. */
     MANUAL
 }

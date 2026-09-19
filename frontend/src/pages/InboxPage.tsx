@@ -2,11 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { useSearchParams } from 'react-router-dom';
 import { EmailApi, GmailApi, type SearchFilters } from '../api/endpoints';
 import { errorMessage, isAbortError, startGmailConnect } from '../api/client';
+import { takePrefetchedInbox } from '../api/prefetch';
 import { useAuth } from '../context/AuthContext';
 import { useAppShell } from '../context/AppShell';
 import { useRealtime, useRealtimeEvent, type RealtimeStatus } from '../context/RealtimeContext';
 import type { Category, EmailAnalysisDto, EmailDetailDto, EmailSummaryDto, Page, Priority, RiskLevel } from '../types';
 import { cn } from '../lib/cn';
+import { INBOX_PAGE_SIZE } from '../lib/constants';
 import { formatTimeAgo, pluralize, titleCase } from '../lib/format';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { useHotkeys } from '../hooks/useHotkeys';
@@ -34,7 +36,7 @@ const CATEGORIES: Category[] = ['PERSONAL', 'WORK', 'EDUCATION', 'FINANCE', 'SHO
 const PRIORITIES: Priority[] = ['HIGH', 'MEDIUM', 'LOW'];
 const RISK_LEVELS: RiskLevel[] = ['HIGH', 'MEDIUM', 'LOW'];
 
-const PAGE_SIZE = 40;
+const PAGE_SIZE = INBOX_PAGE_SIZE;
 // Fallback only, while the realtime stream is down: watch for background analysis.
 const LIST_POLL_MS = 5000;
 const LIST_POLL_LIMIT = 24; // ~2 minutes
@@ -254,6 +256,23 @@ export function InboxPage() {
     [filters, hasFilters]
   );
 
+  // The very first page may already be on its way from before React mounted.
+  const firstLoad = useRef(true);
+  const loadFirstPage = useCallback(
+    (signal: AbortSignal): Promise<Page<EmailSummaryDto>> => {
+      const first = firstLoad.current;
+      firstLoad.current = false;
+      if (first && !hasFilters) {
+        const prefetched = takePrefetchedInbox();
+        // One that failed — or was started before this browser had a session
+        // — simply falls back to asking again.
+        if (prefetched) return prefetched.catch(() => fetchPage(0, PAGE_SIZE, signal));
+      }
+      return fetchPage(0, PAGE_SIZE, signal);
+    },
+    [fetchPage, hasFilters]
+  );
+
   useEffect(() => {
     if (!connected) return;
     const controller = new AbortController();
@@ -264,7 +283,7 @@ export function InboxPage() {
     else setPhase('loading');
     setPollExhausted(false);
 
-    fetchPage(0, PAGE_SIZE, controller.signal)
+    loadFirstPage(controller.signal)
       .then((data) => {
         if (id !== requestId.current) return;
         setEmails(data.content);
@@ -288,7 +307,7 @@ export function InboxPage() {
         }
       });
     return () => controller.abort();
-  }, [connected, fetchPage, reloadKey]);
+  }, [connected, loadFirstPage, reloadKey]);
 
   const loadMore = useCallback(async () => {
     if (loadingMore || !hasMore || phase !== 'ready') return;

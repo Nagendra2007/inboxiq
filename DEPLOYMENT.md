@@ -96,6 +96,20 @@ Testing-mode limit: Google expires refresh tokens for Gmail scopes after **7 day
 
 Open `https://<your-render-url>`, click **Continue with Google**, approve, and you land in your inbox while the newest 20 emails are fetched; summaries fill in as each is analyzed. You stay signed in — closing the browser or a redeploy doesn't sign you out (sessions are stored in the database). While the app is open, new Gmail messages appear on their own within about 30 seconds. After 15 idle minutes the free instance sleeps; the next visit shows "Waking up InboxIQ…" and retries by itself, then catches up on only the mail that arrived meanwhile.
 
+### Syncing while the app is closed
+
+InboxIQ also checks the mailboxes of users who are *away* every `GMAIL_BACKGROUND_POLL_MINUTES` (5 by default), so mail is fetched and analyzed as it arrives and the next sign-in has nothing left to do but read it out of the database. Checks stop for a mailbox nobody has opened in `GMAIL_BACKGROUND_ACTIVE_DAYS` (30), so an abandoned account stops spending Gmail quota and AI credits; signing in revives it.
+
+**This needs a host that keeps the app running.** Render's free plan stops the instance after 15 minutes without a *visitor* — work the app does for itself doesn't count — so nothing can be synced while it's asleep, and the first visit afterwards waits a minute or more for it to start. If you want mail to keep arriving with the app closed, pick one of:
+
+| Option | What it costs | Notes |
+|---|---|---|
+| Render **Starter** instance | ~$7/month | Nothing else changes; the service simply stops sleeping. |
+| **Railway** | usage-based (a trial credit covers a small app) | Same image, no code changes. Containers don't sleep. |
+| Stay free + an external uptime ping | free | A scheduler such as cron-job.org or UptimeRobot requesting `/actuator/health` every 10 minutes keeps the instance awake. Render's free plan allows 750 instance-hours a month and one always-on service uses about 730, so this fits — but only for a single free service, and always-on isn't what the free plan is meant for. |
+
+Setting `GMAIL_BACKGROUND_POLL_MINUTES=0` turns background checks off, leaving sync to happen only while somebody has the app open.
+
 ## Changing the AI provider, model or key
 
 No redeploy needed. Signed in as the administrator, open **Settings → AI provider**:
@@ -121,6 +135,7 @@ Keys saved here are encrypted with `TOKEN_ENCRYPTION_KEY` and never sent back to
 | AI summaries never appear, or "out of credits" / "rejected the API key" | Open **Settings → AI provider → Test connection** — it shows the provider's own explanation. Top up credits, fix the key, or switch provider/model there. Failed analyses are retried automatically a couple of times; **Re-analyze** on an email retries it now. |
 | New mail doesn't appear by itself (the dot beside **Inbox** stays amber) | Something between the browser and the app is blocking the live connection (`/api/events`). The inbox still works — use **Sync** — and it reconnects on its own. |
 | Out-of-memory restarts on the free plan | Add `JAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=60 -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError`. |
+| Mail only arrives while the app is open, and the first visit of the day takes a minute | The instance is asleep, so nothing runs in between — see [Syncing while the app is closed](#syncing-while-the-app-is-closed). |
 
 ## Other hosts
 
@@ -138,4 +153,4 @@ Outside Render, set those three URL variables to your public URL explicitly.
 - Sessions are stored in Postgres (Spring Session JDBC), so restarts, redeploys and extra instances don't sign anyone out.
 - Rate limiting, the live-update streams and sync coordination are in-memory, so they're per instance. Running more than one instance needs a shared store (e.g. Redis, or Postgres `LISTEN/NOTIFY` for events) behind `RateLimiterService`, `EventStreamService` and `SyncCoordinator`.
 
-Optional tuning variables (defaults in brackets): `SESSION_DAYS` [30], `FIRST_SYNC_MESSAGE_CAP` [20], `GMAIL_POLL_SECONDS` [30], `MAX_NEW_MESSAGES_PER_SYNC` [100], `AI_ANALYSIS_CONCURRENCY` [2].
+Optional tuning variables (defaults in brackets): `SESSION_DAYS` [30], `FIRST_SYNC_MESSAGE_CAP` [20], `GMAIL_POLL_SECONDS` [30], `GMAIL_BACKGROUND_POLL_MINUTES` [5], `GMAIL_BACKGROUND_ACTIVE_DAYS` [30], `MAX_NEW_MESSAGES_PER_SYNC` [100], `AI_ANALYSIS_CONCURRENCY` [2].

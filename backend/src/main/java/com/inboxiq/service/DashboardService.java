@@ -1,9 +1,9 @@
 package com.inboxiq.service;
 
-import com.inboxiq.entity.Priority;
-import com.inboxiq.entity.RiskLevel;
 import com.inboxiq.repository.ActionItemRepository;
+import com.inboxiq.repository.AnalysisCounts;
 import com.inboxiq.repository.EmailAnalysisRepository;
+import com.inboxiq.repository.EmailCounts;
 import com.inboxiq.repository.EmailRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,7 +15,10 @@ import java.util.UUID;
 /**
  * Aggregation queries backing {@code GET /api/dashboard}. Deliberately just
  * counts — no email bodies or AI content pass through here — so this
- * endpoint stays cheap to call on every dashboard load.
+ * endpoint stays cheap to call on every dashboard load. The ten figures are
+ * read in three queries rather than ten: the sidebar badges refresh this on
+ * every app load and after every burst of new mail, and on a small instance
+ * talking to a hosted database, round trips are most of the cost.
  */
 @Service
 public class DashboardService {
@@ -48,16 +51,18 @@ public class DashboardService {
     @Transactional(readOnly = true)
     public DashboardStats statsFor(UUID mailAccountId) {
         Instant sevenDaysAgo = Instant.now().minus(7, ChronoUnit.DAYS);
+        EmailCounts emails = emailRepository.countsFor(mailAccountId, sevenDaysAgo);
+        AnalysisCounts analyses = emailAnalysisRepository.countsFor(mailAccountId);
         return new DashboardStats(
-                emailRepository.countByMailAccountId(mailAccountId),
-                emailRepository.countByMailAccountIdAndReadFalse(mailAccountId),
-                emailRepository.countByMailAccountIdAndReceivedAtAfter(mailAccountId, sevenDaysAgo),
-                emailAnalysisRepository.countByEmail_MailAccountIdAndPriority(mailAccountId, Priority.HIGH),
-                emailAnalysisRepository.countByEmail_MailAccountIdAndPriority(mailAccountId, Priority.MEDIUM),
-                emailAnalysisRepository.countByEmail_MailAccountIdAndPriority(mailAccountId, Priority.LOW),
-                emailAnalysisRepository.countByEmail_MailAccountIdAndRiskLevel(mailAccountId, RiskLevel.HIGH),
-                emailAnalysisRepository.countByEmail_MailAccountIdAndRiskLevel(mailAccountId, RiskLevel.MEDIUM),
-                emailAnalysisRepository.countByEmail_MailAccountIdAndRequiresReplyTrue(mailAccountId),
+                emails.total(),
+                emails.unread(),
+                emails.receivedSince(),
+                analyses.highPriority(),
+                analyses.mediumPriority(),
+                analyses.lowPriority(),
+                analyses.highRisk(),
+                analyses.mediumRisk(),
+                analyses.awaitingReply(),
                 actionItemRepository.countByEmail_MailAccountIdAndCompletedFalse(mailAccountId)
         );
     }
