@@ -46,6 +46,18 @@ const BULK_DELETE_BATCH = 50;
 const SYNC_FOLLOW_MS = 2000;
 const SYNC_FOLLOW_LIMIT = 30;
 
+/**
+ * What actually happened in Gmail, rather than what usually happens. An
+ * email Gmail no longer had (deleted there, or in another client, since the
+ * last sync) is still removed here — but saying it was "moved to Trash in
+ * Gmail" would be a claim about the user's mailbox that isn't true.
+ */
+function gmailOutcome(deleted: number, movedToTrash: number): string {
+  if (movedToTrash === deleted) return 'They were also moved to Trash in Gmail.';
+  if (movedToTrash === 0) return 'They were already gone from Gmail, so only InboxIQ’s copies were removed.';
+  return `${movedToTrash} of them were moved to Trash in Gmail; the rest were already gone from there.`;
+}
+
 function oneOf<T extends string>(value: string | null, allowed: readonly T[]): T | '' {
   return value && (allowed as readonly string[]).includes(value) ? (value as T) : '';
 }
@@ -253,6 +265,19 @@ export function InboxPage() {
   const reconcileAfterLoad = useRef(false);
   const reconcileRef = useRef<() => void>(() => {});
 
+  /**
+   * Rows on their way out. A confirmed delete takes them off screen at once
+   * — the wait is Gmail's, and there is nothing to watch while it happens —
+   * and they are held here so a list the server answers mid-delete doesn't
+   * put them back for a moment. One that fails returns to its place, with
+   * the message saying so.
+   */
+  const leaving = useRef<Set<string>>(new Set());
+  const keepVisible = useCallback(
+    (list: EmailSummaryDto[]) => (leaving.current.size === 0 ? list : list.filter((e) => !leaving.current.has(e.id))),
+    []
+  );
+
   const fetchPage = useCallback(
     (pageIndex: number, size: number, signal?: AbortSignal): Promise<Page<EmailSummaryDto>> =>
       hasFilters ? EmailApi.search(filters, pageIndex, size, signal) : EmailApi.list(pageIndex, size, signal),
@@ -289,7 +314,7 @@ export function InboxPage() {
     loadFirstPage(controller.signal)
       .then((data) => {
         if (id !== requestId.current) return;
-        setEmails(data.content);
+        setEmails(keepVisible(data.content));
         setTotal(data.totalElements);
         setPage(0);
         setHasMore(!data.last);
@@ -321,7 +346,7 @@ export function InboxPage() {
       if (id !== requestId.current) return;
       setEmails((prev) => {
         const seen = new Set(prev.map((e) => e.id));
-        return [...prev, ...data.content.filter((e) => !seen.has(e.id))];
+        return [...prev, ...keepVisible(data.content).filter((e) => !seen.has(e.id))];
       });
       setPage((p) => p + 1);
       setHasMore(!data.last);
@@ -421,7 +446,7 @@ export function InboxPage() {
       const size = Math.min(100, Math.max(PAGE_SIZE, emailsRef.current.length));
       const data = await fetchPage(0, size);
       if (id !== requestId.current) return;
-      setEmails((prev) => mergeFirstPage(prev, data.content, data.last));
+      setEmails((prev) => mergeFirstPage(prev, keepVisible(data.content), data.last));
       setTotal(data.totalElements);
       if (data.last) setHasMore(false);
       setError(null);
@@ -637,66 +662,90 @@ export function InboxPage() {
 
   // --- Delete ---
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
-  const [deleting, setDeleting] = useState(false);
   const pendingDelete = pendingDeleteId ? emails.find((e) => e.id === pendingDeleteId) : undefined;
+
+  const hideRows = useCallback((ids: string[]) => {
+    ids.forEach((id) => leaving.current.add(id));
+    const going = new Set(ids);
+    setEmails((prev) => prev.filter((e) => !going.has(e.id)));
+    setTotal((t) => Math.max(0, t - ids.length));
+  }, []);
+
+  const settleRows = useCallback((ids: string[]) => ids.forEach((id) => leaving.current.delete(id)), []);
+
+  const restoreRows = useCallback((rows: EmailSummaryDto[]) => {
+    rows.forEach((row) => leaving.current.delete(row.id));
+    if (rows.length === 0) return;
+    setEmails((prev) => {
+      const here = new Set(prev.map((e) => e.id));
+      return [...prev, ...rows.filter((row) => !here.has(row.id))].sort(byNewest);
+    });
+    setTotal((t) => t + rows.length);
+  }, []);
 
   const confirmDelete = async () => {
     if (!pendingDeleteId) return;
     const id = pendingDeleteId;
-    setDeleting(true);
+    const row = emails.find((e) => e.id === id);
+    setPendingDeleteId(null);
+    hideRows([id]);
+    if (selectedId === id) select(null);
     try {
       await EmailApi.delete(id);
-      setEmails((prev) => prev.filter((e) => e.id !== id));
-      setTotal((t) => Math.max(0, t - 1));
-      if (selectedId === id) select(null);
+      settleRows([id]);
       toast.success('Email deleted', 'It was also moved to Trash in Gmail.');
       refreshStats();
     } catch (err) {
-      toast.error('Could not delete that email', errorMessage(err, 'Please try again.'));
-    } finally {
-      setDeleting(false);
-      setPendingDeleteId(null);
+      restoreRows(row ? [row] : []);
+      settleRows([id]);
+      toast.error('Could not delete that email', errorMessage(err, 'It’s back in your inbox — please try again.'));
     }
   };
 
   // --- Delete several ---
   const [confirmBulk, setConfirmBulk] = useState(false);
-  const [deletingMany, setDeletingMany] = useState(false);
 
   const confirmBulkDelete = async () => {
     const ids = [...checkedIds];
     if (ids.length === 0) return;
-    setDeletingMany(true);
-    const removed: string[] = [];
-    let failed = 0;
-    try {
-      // The backend takes a bounded number per request; a big selection goes
-      // in runs, and each finished run is kept even if a later one fails.
-      for (let i = 0; i < ids.length; i += BULK_DELETE_BATCH) {
-        const result = await EmailApi.bulkDelete(ids.slice(i, i + BULK_DELETE_BATCH));
-        removed.push(...result.deletedIds);
-        failed += result.failed;
-      }
-    } catch (err) {
-      toast.error('Could not delete those emails', errorMessage(err, 'Please try again.'));
-    }
+    const going = new Set(ids);
+    const rows = emails.filter((e) => going.has(e.id)); // kept in case any have to come back
 
-    if (removed.length > 0) {
-      const gone = new Set(removed);
-      setEmails((prev) => prev.filter((e) => !gone.has(e.id)));
-      setTotal((t) => Math.max(0, t - gone.size));
-      if (selectedId && gone.has(selectedId)) select(null);
-      refreshStats();
-      toast.success(
-        `${pluralize(removed.length, 'email')} deleted`,
-        failed > 0
-          ? `They were moved to Trash in Gmail. ${failed} couldn’t be deleted and are still here.`
-          : 'They were also moved to Trash in Gmail.'
-      );
-    }
-    setDeletingMany(false);
     setConfirmBulk(false);
     clearChecked();
+    hideRows(ids);
+    if (selectedId && going.has(selectedId)) select(null);
+
+    const deleted = new Set<string>();
+    let movedToTrash = 0;
+    try {
+      // The backend takes a bounded number per request; a big selection goes
+      // in runs, and each finished run counts even if a later one fails.
+      for (let i = 0; i < ids.length; i += BULK_DELETE_BATCH) {
+        const result = await EmailApi.bulkDelete(ids.slice(i, i + BULK_DELETE_BATCH));
+        result.deletedIds.forEach((id) => deleted.add(id));
+        movedToTrash += result.movedToTrash;
+      }
+    } catch {
+      // Whatever didn't make it comes back below, which says it better than
+      // a message about the request would.
+    }
+
+    settleRows([...deleted]);
+    const back = rows.filter((row) => !deleted.has(row.id));
+    restoreRows(back);
+
+    if (deleted.size > 0) refreshStats();
+    if (back.length > 0) {
+      toast.error(
+        `${pluralize(back.length, 'email')} couldn’t be deleted`,
+        deleted.size > 0
+          ? `The other ${deleted.size} went to Trash in Gmail. The rest are back in your inbox.`
+          : 'They’re back in your inbox — please try again.'
+      );
+    } else if (deleted.size > 0) {
+      toast.success(`${pluralize(deleted.size, 'email')} deleted`, gmailOutcome(deleted.size, movedToTrash));
+    }
   };
 
   const clearFilters = () => {
@@ -966,9 +1015,8 @@ export function InboxPage() {
 
       <ConfirmDialog
         open={pendingDeleteId !== null}
-        onClose={() => !deleting && setPendingDeleteId(null)}
+        onClose={() => setPendingDeleteId(null)}
         onConfirm={confirmDelete}
-        loading={deleting}
         title="Delete this email?"
         description={
           <>
@@ -986,16 +1034,15 @@ export function InboxPage() {
       />
       <ConfirmDialog
         open={confirmBulk}
-        onClose={() => !deletingMany && setConfirmBulk(false)}
+        onClose={() => setConfirmBulk(false)}
         onConfirm={confirmBulkDelete}
-        loading={deletingMany}
         title={`Delete ${pluralize(checkedCount, 'email')}?`}
         description={`${
           checkedCount === 1 ? 'It' : 'They'
         } will be removed from InboxIQ and moved to Trash in your Gmail, where you can still restore ${
           checkedCount === 1 ? 'it' : 'them'
         } for 30 days.`}
-        confirmLabel={deletingMany ? 'Deleting…' : `Delete ${checkedCount}`}
+        confirmLabel={`Delete ${checkedCount}`}
       />
     </div>
   );

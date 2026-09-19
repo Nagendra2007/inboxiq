@@ -139,6 +139,8 @@ export interface EmailAnalysisDto {
 export interface BulkDeleteResultDto {
   deletedIds: string[];
   failed: number;
+  /** How many of deletedIds Gmail moved to Trash just now; the rest it no longer had. */
+  movedToTrash: number;
 }
 
 export interface EmailSummaryDto {

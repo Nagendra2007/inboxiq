@@ -27,6 +27,7 @@ import com.inboxiq.security.CurrentUserProvider;
 import com.inboxiq.service.AnalysisQueue;
 import com.inboxiq.service.AssistantCommandService;
 import com.inboxiq.service.EmailAnalysisService;
+import com.inboxiq.service.EmailDeletionService;
 import com.inboxiq.service.MailAccountService;
 import com.inboxiq.service.RateLimiterService;
 import com.inboxiq.service.ReplyService;
@@ -52,7 +53,6 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.http.HttpStatus;
 
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -82,6 +82,7 @@ public class EmailController {
     private final GmailInboxClient gmailInboxClient;
     private final RateLimiterService rateLimiterService;
     private final AnalysisQueue analysisQueue;
+    private final EmailDeletionService emailDeletionService;
 
     public EmailController(CurrentUserProvider currentUserProvider,
                             MailAccountService mailAccountService,
@@ -94,7 +95,8 @@ public class EmailController {
                             AssistantCommandService assistantCommandService,
                             GmailInboxClient gmailInboxClient,
                             RateLimiterService rateLimiterService,
-                            AnalysisQueue analysisQueue) {
+                            AnalysisQueue analysisQueue,
+                            EmailDeletionService emailDeletionService) {
         this.currentUserProvider = currentUserProvider;
         this.mailAccountService = mailAccountService;
         this.emailRepository = emailRepository;
@@ -107,6 +109,7 @@ public class EmailController {
         this.gmailInboxClient = gmailInboxClient;
         this.rateLimiterService = rateLimiterService;
         this.analysisQueue = analysisQueue;
+        this.emailDeletionService = emailDeletionService;
     }
 
     @GetMapping
@@ -190,20 +193,11 @@ public class EmailController {
     public BulkDeleteResultDto bulkDelete(@Valid @RequestBody BulkDeleteRequest request) {
         MailAccount account = currentAccount();
         List<EmailMessage> owned = emailRepository.findOwned(account.getId(), request.ids());
-
-        List<UUID> deleted = new ArrayList<>();
-        int failed = request.ids().size() - owned.size(); // ids that aren't the caller's, or are already gone
-        for (EmailMessage email : owned) {
-            try {
-                gmailInboxClient.trashMessage(email.getMailAccount(), email.getProviderMessageId());
-                emailRepository.deleteById(email.getId());
-                deleted.add(email.getId());
-            } catch (RuntimeException e) {
-                failed++;
-                log.warn("Could not delete email id={} as part of a selection: {}", email.getId(), e.toString());
-            }
-        }
-        return new BulkDeleteResultDto(deleted, failed);
+        EmailDeletionService.Result result = emailDeletionService.trashAndDelete(owned);
+        // Whatever didn't go: ids that aren't the caller's or were already
+        // gone, plus any Gmail refused.
+        return new BulkDeleteResultDto(
+                result.deletedIds(), request.ids().size() - result.deletedIds().size(), result.movedToTrash());
     }
 
     @GetMapping("/{id}/analysis")

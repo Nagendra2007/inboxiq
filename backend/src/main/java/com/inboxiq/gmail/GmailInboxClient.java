@@ -276,18 +276,24 @@ public class GmailInboxClient {
      * reversible action as clicking Gmail's own trash icon (not a permanent
      * delete). Called before InboxIQ removes its own local copy, so
      * "delete" in the app means the same thing as "delete" in Gmail.
-     * Requires the gmail.modify scope; a message already gone from Gmail
-     * (404) is treated as success rather than an error, since the end
-     * state — not in the user's inbox — is already what we want.
+     * Requires the gmail.modify scope. Returns true when Gmail moved the
+     * message, false when Gmail no longer had it (404) — already deleted
+     * there or in another client. Both leave the end state we want, so
+     * neither is an error, but only the first is worth telling the user
+     * their mail was moved to Trash.
      */
-    public void trashMessage(MailAccount account, String messageId) {
+    public boolean trashMessage(MailAccount account, String messageId) {
         try {
             Gmail gmail = clientFactory.forAccount(account);
             gmail.users().messages().trash(USER_ID, messageId).execute();
+            return true;
         } catch (GoogleJsonResponseException e) {
             if (e.getStatusCode() == 404) {
+                // Deleted in Gmail itself, or in another client, since the last
+                // sync. Not an error — but the caller shouldn't tell the user
+                // it moved anything to Trash either.
                 log.info("Message already absent from Gmail when trashing; treating as already deleted");
-                return;
+                return false;
             }
             throw translate(e);
         } catch (IOException e) {

@@ -10,6 +10,7 @@ import com.inboxiq.repository.EmailRepository;
 import com.inboxiq.repository.MailAccountRepository;
 import com.inboxiq.repository.UserRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -27,10 +28,12 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oidcLogin;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -84,6 +87,11 @@ class BulkDeleteIntegrationTest {
         return json.writeValueAsString(Map.of("ids", ids));
     }
 
+    @BeforeEach
+    void gmailAcceptsTrashing() {
+        when(gmail.trashMessage(any(), anyString())).thenReturn(true);
+    }
+
     @Test
     void deletesEveryChosenEmailAndTrashesEachOneInGmail() throws Exception {
         User user = newUser();
@@ -97,7 +105,8 @@ class BulkDeleteIntegrationTest {
                         .content(body(List.of(one.getId(), two.getId()))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.deletedIds.length()").value(2))
-                .andExpect(jsonPath("$.failed").value(0));
+                .andExpect(jsonPath("$.failed").value(0))
+                .andExpect(jsonPath("$.movedToTrash").value(2));
 
         assertThat(emails.findById(one.getId())).isEmpty();
         assertThat(emails.findById(two.getId())).isEmpty();
@@ -147,6 +156,32 @@ class BulkDeleteIntegrationTest {
         assertThat(emails.findById(mine.getId())).isEmpty();
         assertThat(emails.findById(theirs.getId())).isPresent();
         verify(gmail, never()).trashMessage(any(), eq("s1"));
+    }
+
+    /**
+     * The case behind "it disappeared from InboxIQ but my mailbox looks the
+     * same": Gmail didn't have the message any more, so nothing moved there.
+     * The local copy still goes, but the result mustn't claim a mailbox
+     * change that didn't happen.
+     */
+    @Test
+    void anEmailGmailNoLongerHasIsRemovedHereWithoutClaimingGmailMovedIt() throws Exception {
+        User user = newUser();
+        MailAccount account = accountFor(user);
+        EmailMessage moved = email(account, "t1");
+        EmailMessage alreadyGone = email(account, "t2");
+        when(gmail.trashMessage(any(), eq("t2"))).thenReturn(false);
+
+        mvc.perform(post("/api/emails/bulk-delete").with(as(user)).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body(List.of(moved.getId(), alreadyGone.getId()))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.deletedIds.length()").value(2))
+                .andExpect(jsonPath("$.failed").value(0))
+                .andExpect(jsonPath("$.movedToTrash").value(1));
+
+        assertThat(emails.findById(moved.getId())).isEmpty();
+        assertThat(emails.findById(alreadyGone.getId())).isEmpty();
     }
 
     @Test
