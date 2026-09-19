@@ -236,13 +236,21 @@ public class EmailSyncService {
             events.publish(userId, RealtimeEvent.EMAIL_UPDATED, Map.of("id", email.getId(), "read", email.isRead()));
         }
 
+        // Archived in Gmail (or put back): the browser drops it from the
+        // inbox list, or refetches to pick it up again.
+        List<EmailMessage> reshelved = emailPersistenceService.applyArchiveStates(account.getId(), delta.archiveStates());
+        for (EmailMessage email : reshelved) {
+            events.publish(userId, RealtimeEvent.EMAIL_UPDATED,
+                    Map.of("id", email.getId(), "read", email.isRead(), "archived", email.isArchived()));
+        }
+
         int cap = appProperties.getGmail().getMaxNewMessagesPerSync();
         if (delta.candidateCount() > cap) {
             log.info("Account id={} has {} new messages since the last sync; storing the newest {}",
                     account.getId(), delta.candidateCount(), cap);
         }
         int stored = storeMissing(gmail, account, userId, delta.messagesToStore(cap));
-        return new PassResult(Mode.INCREMENTAL, checkpoint, stored, updated.size(), removed.size());
+        return new PassResult(Mode.INCREMENTAL, checkpoint, stored, updated.size() + reshelved.size(), removed.size());
     }
 
     /**

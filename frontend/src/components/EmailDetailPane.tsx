@@ -14,10 +14,12 @@ import { Alert } from './ui/Feedback';
 import { useToast } from './ui/Toast';
 import {
   AlertTriangleIcon,
+  ArchiveIcon,
   CalendarIcon,
   ChevronDownIcon,
   ChevronLeftIcon,
   EyeIcon,
+  InboxIcon,
   RefreshIcon,
   SparklesIcon,
   ThreadIcon,
@@ -56,6 +58,7 @@ function fromListRow(row: EmailSummaryDto): EmailDetailDto {
     receivedAt: row.receivedAt,
     read: row.read,
     hasAttachments: row.hasAttachments,
+    archived: row.archived,
     threadId: null,
     analysis: row.analysis,
     actionItems: [],
@@ -173,6 +176,7 @@ export function EmailDetailPane({
   preview,
   onClose,
   onRequestDelete,
+  onArchive,
   onLoaded,
   onAnalysisChange,
 }: {
@@ -181,6 +185,7 @@ export function EmailDetailPane({
   preview?: EmailSummaryDto | null;
   onClose: () => void;
   onRequestDelete: (id: string) => void;
+  onArchive: (id: string) => void;
   /** Called once the email is fetched (the backend marks it read at that point). */
   onLoaded?: (email: EmailDetailDto) => void;
   onAnalysisChange?: (id: string, analysis: EmailAnalysisDto) => void;
@@ -341,6 +346,16 @@ export function EmailDetailPane({
             >
               <span className="hidden sm:inline">{reanalyzing ? 'Analyzing…' : 'Re-analyze'}</span>
             </Button>
+            <IconButton
+              label={
+                email?.archived
+                  ? 'Move back to the inbox (in Gmail too)'
+                  : 'Archive (takes it out of your Gmail inbox, keeps the email)'
+              }
+              onClick={() => onArchive(emailId)}
+            >
+              {email?.archived ? <InboxIcon className="h-4 w-4" /> : <ArchiveIcon className="h-4 w-4" />}
+            </IconButton>
             <IconButton label="Delete email (moves it to Gmail Trash)" tone="danger" onClick={() => onRequestDelete(emailId)}>
               <TrashIcon className="h-4 w-4" />
             </IconButton>

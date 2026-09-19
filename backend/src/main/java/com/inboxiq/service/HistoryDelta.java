@@ -18,10 +18,13 @@ import java.util.Set;
  *    if not stored yet;
  *  - read/unread changes — to mirror on stored messages (no re-analysis:
  *    Gmail never changes a message's content, only its labels);
- *  - messages deleted, or moved to Trash or Spam — to remove locally.
+ *  - messages deleted, or moved to Trash or Spam — to remove locally;
+ *  - messages archived or put back in the inbox — to mirror locally.
  *
- * Archiving (only INBOX removed) deliberately keeps the local copy, so the
- * user doesn't lose its summary and to-dos by tidying up Gmail.
+ * Archiving (only INBOX removed) deliberately keeps the local copy and
+ * everything derived from it — the summary, the to-dos — and only takes the
+ * message out of the inbox list, exactly as it does in Gmail. Putting it
+ * back in the Gmail inbox brings it back here too.
  */
 final class HistoryDelta {
 
@@ -32,6 +35,7 @@ final class HistoryDelta {
 
     private final LinkedHashSet<String> toStore = new LinkedHashSet<>();
     private final Map<String, Boolean> readStates = new LinkedHashMap<>();
+    private final Map<String, Boolean> archiveStates = new LinkedHashMap<>();
     private final LinkedHashSet<String> toRemove = new LinkedHashSet<>();
 
     private HistoryDelta() {}
@@ -53,15 +57,20 @@ final class HistoryDelta {
             }
             case LABELS_ADDED -> {
                 if (labels.stream().anyMatch(REMOVAL_LABELS::contains)) markForRemoval(id);
-                else if (labels.contains(INBOX)) markForStore(id);
+                else if (labels.contains(INBOX)) {
+                    markForStore(id);
+                    archiveStates.put(id, false); // back in the inbox
+                }
                 if (labels.contains(UNREAD)) readStates.put(id, false);
             }
             case LABELS_REMOVED -> {
                 if (labels.contains(UNREAD)) readStates.put(id, true);
+                if (labels.contains(INBOX)) archiveStates.put(id, true); // archived
             }
             case MESSAGE_DELETED -> {
                 markForRemoval(id);
                 readStates.remove(id);
+                archiveStates.remove(id);
             }
         }
     }
@@ -90,6 +99,13 @@ final class HistoryDelta {
     /** Gmail message id → read, for messages whose unread state changed. */
     Map<String, Boolean> readStates() {
         Map<String, Boolean> result = new LinkedHashMap<>(readStates);
+        toRemove.forEach(result::remove);
+        return Collections.unmodifiableMap(result);
+    }
+
+    /** Gmail message id → archived, for messages that left or re-entered the inbox. */
+    Map<String, Boolean> archiveStates() {
+        Map<String, Boolean> result = new LinkedHashMap<>(archiveStates);
         toRemove.forEach(result::remove);
         return Collections.unmodifiableMap(result);
     }

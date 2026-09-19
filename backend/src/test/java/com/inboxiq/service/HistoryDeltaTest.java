@@ -28,6 +28,34 @@ class HistoryDeltaTest {
     }
 
     @Test
+    void archivingInGmailTakesTheMessageOutOfTheInboxListWithoutDeletingIt() {
+        HistoryDelta delta = HistoryDelta.of(List.of(labelsRemoved("filed", "INBOX")));
+
+        assertThat(delta.archiveStates()).containsExactly(Map.entry("filed", true));
+        // Kept: the summary and to-dos survive tidying up in Gmail.
+        assertThat(delta.messagesToRemove()).isEmpty();
+    }
+
+    @Test
+    void puttingAMessageBackInTheGmailInboxUnarchivesItHere() {
+        HistoryDelta delta = HistoryDelta.of(List.of(
+                labelsRemoved("m", "INBOX"),
+                labelsAdded("m", "INBOX")));
+
+        assertThat(delta.archiveStates()).containsExactly(Map.entry("m", false));
+    }
+
+    @Test
+    void aDeletedMessageNeedsNoArchiveChange() {
+        HistoryDelta delta = HistoryDelta.of(List.of(
+                labelsRemoved("gone", "INBOX"),
+                deleted("gone")));
+
+        assertThat(delta.archiveStates()).isEmpty();
+        assertThat(delta.messagesToRemove()).containsExactly("gone");
+    }
+
+    @Test
     void onlyNewInboxMessagesAreStored() {
         HistoryDelta delta = HistoryDelta.of(List.of(
                 added("a", "INBOX", "UNREAD"),

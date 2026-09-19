@@ -1,8 +1,10 @@
 package com.inboxiq.controller;
 
 import com.inboxiq.dto.AdjustReplyRequest;
-import com.inboxiq.dto.BulkDeleteRequest;
-import com.inboxiq.dto.BulkDeleteResultDto;
+import com.inboxiq.dto.BulkArchiveRequest;
+import com.inboxiq.dto.BulkEmailRequest;
+import com.inboxiq.dto.BulkReadRequest;
+import com.inboxiq.dto.BulkActionResultDto;
 import com.inboxiq.dto.EmailAnalysisDto;
 import com.inboxiq.dto.EmailDetailDto;
 import com.inboxiq.dto.EmailSummaryDto;
@@ -27,7 +29,7 @@ import com.inboxiq.security.CurrentUserProvider;
 import com.inboxiq.service.AnalysisQueue;
 import com.inboxiq.service.AssistantCommandService;
 import com.inboxiq.service.EmailAnalysisService;
-import com.inboxiq.service.EmailDeletionService;
+import com.inboxiq.service.EmailActionService;
 import com.inboxiq.service.MailAccountService;
 import com.inboxiq.service.RateLimiterService;
 import com.inboxiq.service.ReplyService;
@@ -82,7 +84,7 @@ public class EmailController {
     private final GmailInboxClient gmailInboxClient;
     private final RateLimiterService rateLimiterService;
     private final AnalysisQueue analysisQueue;
-    private final EmailDeletionService emailDeletionService;
+    private final EmailActionService emailActionService;
 
     public EmailController(CurrentUserProvider currentUserProvider,
                             MailAccountService mailAccountService,
@@ -96,7 +98,7 @@ public class EmailController {
                             GmailInboxClient gmailInboxClient,
                             RateLimiterService rateLimiterService,
                             AnalysisQueue analysisQueue,
-                            EmailDeletionService emailDeletionService) {
+                            EmailActionService emailActionService) {
         this.currentUserProvider = currentUserProvider;
         this.mailAccountService = mailAccountService;
         this.emailRepository = emailRepository;
@@ -109,16 +111,17 @@ public class EmailController {
         this.gmailInboxClient = gmailInboxClient;
         this.rateLimiterService = rateLimiterService;
         this.analysisQueue = analysisQueue;
-        this.emailDeletionService = emailDeletionService;
+        this.emailActionService = emailActionService;
     }
 
     @GetMapping
     @Transactional(readOnly = true)
     public Page<EmailSummaryDto> list(@RequestParam(defaultValue = "0") int page,
-                                       @RequestParam(defaultValue = "20") int size) {
+                                       @RequestParam(defaultValue = "20") int size,
+                                       @RequestParam(defaultValue = "false") boolean archived) {
         MailAccount account = currentAccount();
         Pageable pageable = PageRequest.of(page, Math.min(size, 100));
-        return emailRepository.findSummaries(account.getId(), pageable)
+        return emailRepository.findSummaries(account.getId(), archived, pageable)
                 .map(emailMapper::toSummaryDto);
     }
 
@@ -131,12 +134,14 @@ public class EmailController {
             @RequestParam(required = false) Priority priority,
             @RequestParam(required = false) RiskLevel riskLevel,
             @RequestParam(required = false) Boolean unreadOnly,
+            @RequestParam(defaultValue = "false") boolean archived,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         MailAccount account = currentAccount();
-        var criteria = new SearchService.SearchCriteria(sender, keyword, category, priority, riskLevel, unreadOnly, from, to);
+        var criteria = new SearchService.SearchCriteria(
+                sender, keyword, category, priority, riskLevel, unreadOnly, archived, from, to);
         Pageable pageable = PageRequest.of(page, Math.min(size, 100), Sort.by("receivedAt").descending());
         return searchService.search(account.getId(), criteria, pageable).map(emailMapper::toSummaryDto);
     }
@@ -148,6 +153,11 @@ public class EmailController {
         if (!email.isRead()) {
             email.setRead(true);
             emailRepository.save(email);
+            // And in the real Gmail, so reading here empties the real inbox
+            // too — in the background, because the reader shouldn't wait on
+            // a round trip to Google to show an email it already has.
+            emailActionService.markReadInGmailQuietly(
+                    email.getMailAccount().getId(), email.getProviderMessageId());
         }
         // Emails stored before background analysis existed may never have
         // been analyzed; do it now that someone is reading one. The result
@@ -190,14 +200,41 @@ public class EmailController {
      * the caller leaves the rest on screen.
      */
     @PostMapping("/bulk-delete")
-    public BulkDeleteResultDto bulkDelete(@Valid @RequestBody BulkDeleteRequest request) {
+    public BulkActionResultDto bulkDelete(@Valid @RequestBody BulkEmailRequest request) {
         MailAccount account = currentAccount();
         List<EmailMessage> owned = emailRepository.findOwned(account.getId(), request.ids());
-        EmailDeletionService.Result result = emailDeletionService.trashAndDelete(owned);
-        // Whatever didn't go: ids that aren't the caller's or were already
-        // gone, plus any Gmail refused.
-        return new BulkDeleteResultDto(
-                result.deletedIds(), request.ids().size() - result.deletedIds().size(), result.movedToTrash());
+        return toResultDto(request, emailActionService.trashAndDelete(owned));
+    }
+
+    /**
+     * Takes a selection out of the inbox without destroying it, or puts it
+     * back — Gmail's own Archive and Move to Inbox, which are just the INBOX
+     * label coming off and going on. The emails, their summaries and their
+     * to-dos all stay either way.
+     */
+    @PostMapping("/bulk-archive")
+    public BulkActionResultDto bulkArchive(@Valid @RequestBody BulkArchiveRequest request) {
+        MailAccount account = currentAccount();
+        List<EmailMessage> owned = emailRepository.findOwned(account.getId(), request.ids());
+        EmailActionService.Result result = emailActionService.setArchived(owned, request.archived());
+        return new BulkActionResultDto(
+                result.appliedIds(), request.ids().size() - result.appliedIds().size(), result.changedInGmail());
+    }
+
+    /** Marks a selection read or unread, here and in the user's real Gmail. */
+    @PostMapping("/bulk-read")
+    public BulkActionResultDto bulkSetRead(@Valid @RequestBody BulkReadRequest request) {
+        MailAccount account = currentAccount();
+        List<EmailMessage> owned = emailRepository.findOwned(account.getId(), request.ids());
+        EmailActionService.Result result = emailActionService.setRead(owned, request.read());
+        return new BulkActionResultDto(
+                result.appliedIds(), request.ids().size() - result.appliedIds().size(), result.changedInGmail());
+    }
+
+    /** Ids that aren't the caller's, or were already gone, count as failures alongside any Gmail refused. */
+    private static BulkActionResultDto toResultDto(BulkEmailRequest request, EmailActionService.Result result) {
+        return new BulkActionResultDto(
+                result.appliedIds(), request.ids().size() - result.appliedIds().size(), result.changedInGmail());
     }
 
     @GetMapping("/{id}/analysis")

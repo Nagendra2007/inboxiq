@@ -40,6 +40,8 @@ public class SearchService {
             Priority priority,
             RiskLevel riskLevel,
             Boolean unreadOnly,
+            /** Which list to search: the inbox, or what has been archived. */
+            boolean archived,
             Instant receivedFrom,
             Instant receivedTo
     ) {}
@@ -48,6 +50,7 @@ public class SearchService {
     public Page<EmailMessage> search(UUID mailAccountId, SearchCriteria criteria, Pageable pageable) {
         var spec = EmailSpecifications.and(
                 EmailSpecifications.forMailAccount(mailAccountId),
+                EmailSpecifications.archived(criteria.archived()),
                 EmailSpecifications.senderContains(criteria.sender()),
                 EmailSpecifications.subjectOrKeywordContains(criteria.keyword()),
                 EmailSpecifications.category(criteria.category()),

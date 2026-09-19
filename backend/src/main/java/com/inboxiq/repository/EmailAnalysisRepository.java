@@ -52,7 +52,7 @@ public interface EmailAnalysisRepository extends JpaRepository<EmailAnalysis, UU
                    count(case when a.riskLevel = com.inboxiq.entity.RiskLevel.MEDIUM then 1 end),
                    count(case when a.requiresReply = true then 1 end))
             from EmailAnalysis a join a.email e
-            where e.mailAccount.id = :mailAccountId
+            where e.mailAccount.id = :mailAccountId and e.archived = false
             """)
     AnalysisCounts countsFor(@Param("mailAccountId") UUID mailAccountId);
 }

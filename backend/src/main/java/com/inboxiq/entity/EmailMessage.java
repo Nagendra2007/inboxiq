@@ -80,6 +80,14 @@ public class EmailMessage {
     @Column(name = "is_read", nullable = false)
     private boolean read = false;
 
+    /**
+     * Out of the inbox but still here, with everything derived from it.
+     * Mirrors Gmail's INBOX label: archiving in either place archives in
+     * both, and neither loses the message.
+     */
+    @Column(name = "archived", nullable = false)
+    private boolean archived = false;
+
     /** True once the retention job (or a user request) has cleared the body fields above. */
     @Column(name = "body_purged", nullable = false)
     private boolean bodyPurged = false;

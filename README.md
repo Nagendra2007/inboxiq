@@ -37,6 +37,7 @@ InboxIQ is an AI-powered Gmail intelligence and writing assistant. It connects t
 - **Category filtering & search**: Personal, Work, Education, Finance, Shopping, Delivery, Security, Social, Marketing, Newsletter, Suspicious, Other.
 - **AI reply composer**: type one line ("say yes, I can meet Thursday at 3pm"), get an editable draft, adjust it with Make shorter / Make formal / Make friendly / Regenerate, edit it by hand, and only then send — never automatic.
 - **Dashboard**: inbox totals, unread count, priority/risk breakdowns, open action items.
+- **Inbox actions that reach Gmail**: archive, mark read/unread and delete — one email or a whole selection. Each one changes the real mailbox first (INBOX label off, UNREAD label off, moved to Trash) and InboxIQ's copy second, and archiving keeps the email with everything derived from it.
 - **Privacy controls**: disconnect Gmail (revokes access, keeps data) or permanently delete all InboxIQ data for your account.
 
 ## Tech stack
@@ -303,8 +304,9 @@ npm run build   # type-checks (tsc -b) then produces dist/
 - **Responsive:** a two-pane inbox (list + reader) on desktop collapses to a single pane on mobile, with a bottom tab bar replacing the sidebar.
 - **Deep links:** inbox filters and the open email live in the URL (`/inbox?priority=HIGH&email=<id>`), so the dashboard links straight into filtered views and the browser back button closes an email.
 - **Live updates:** one Server-Sent Events connection for the whole app (`context/RealtimeContext.tsx`) delivers new mail, read/delete changes and finished analyses, each applied to just the affected email. If the stream is down, the inbox falls back to polling.
-- **Keyboard:** `C` compose, `/` search, `J`/`K` next/previous email, `X` select, `Esc` clear the selection or close the email, `?` shortcut sheet, `Ctrl+Enter` generate a draft.
-- **Deleting:** a row's avatar doubles as its checkbox, so any number of emails can go at once; on a phone, swiping a row left does the same for one. Either way the confirmation is the same, and each email is moved to Trash in the real Gmail before InboxIQ drops its copy.
+- **Keyboard:** `C` compose, `/` search, `J`/`K` next/previous email, `X` select, `E` archive, `Esc` clear the selection or close the email, `?` shortcut sheet, `Ctrl+Enter` generate a draft.
+- **Acting on mail:** a row's avatar doubles as its checkbox, so any number of emails can be archived, marked read or deleted at once; on a phone, swiping a row left deletes one. Every action reaches the real Gmail first — trashed, archived (INBOX label off) or marked read — and only then changes InboxIQ's copy, so the two never drift apart.
+- **Archiving:** out of the inbox, not destroyed. The email keeps its summary, to-dos and drafts and moves to the **Archived** list, which is also where mail archived in Gmail itself ends up; **Move back to the inbox** reverses it in both places.
 - **Opening an email is instant:** the reader paints from the row that was clicked — subject, sender, badges and the whole AI summary are already there — and fills in the recipients, to-dos and original message when its request lands, instead of showing a skeleton for a round trip.
 - **Light and dark themes:** dark by default; the **Light mode** switch (sidebar, Settings, sign-in page) is remembered per browser. The palette is CSS variables (`src/index.css`, `html.theme-light`), so components don't carry per-theme classes; `public/assets/theme-init-v1.js` applies a saved theme before first paint.
 - **Resilience:** a sleeping free-tier server shows a "waking up" screen that retries on its own instead of bouncing you to sign-in; an expired session returns you to sign-in with a notice.
@@ -325,6 +327,8 @@ npm run build   # type-checks (tsc -b) then produces dist/
 | GET | `/api/emails/{id}` | Full email detail (marks read) |
 | DELETE | `/api/emails/{id}` | Delete locally and move to Gmail Trash |
 | POST | `/api/emails/bulk-delete` | Same, for a selection (up to 100); reports which ones went |
+| POST | `/api/emails/bulk-archive` | Archive a selection, or move it back to the inbox — Gmail's INBOX label |
+| POST | `/api/emails/bulk-read` | Mark a selection read or unread, here and in Gmail |
 | GET | `/api/emails/{id}/thread` | Live Gmail thread view |
 | GET | `/api/emails/{id}/analysis` | Stored analysis |
 | POST | `/api/emails/{id}/analyze` | Force re-analysis |
@@ -355,7 +359,7 @@ npm run build   # type-checks (tsc -b) then produces dist/
 - `EmailSyncIntegrationTest` — against a fake 500-message Gmail: the first sync stores only the newest 20; later syncs apply only history changes and never re-list or re-download the mailbox; an expired checkpoint catches up with the newest messages only; a pass that fails halfway keeps its checkpoint and is redone without duplicates; revoked access flags the account without losing data. `HistoryDeltaTest` covers the history-to-changes reduction.
 - `BackgroundSyncIntegrationTest` — a mailbox nobody is watching is still checked; one checked moments ago, one waiting to be reconnected, one that was disconnected and one nobody has opened in months are all left alone.
 - `InboxReadIntegrationTest` — the two reads on the app's critical path: the inbox page comes back newest-first with each email's analysis and without its body, in a single query rather than one per row, and the dashboard counts cover only the caller's own mailbox.
-- `BulkDeleteIntegrationTest` — deleting a selection trashes each email in Gmail first; one Gmail refuses stays put while the rest go; someone else's email id in the body is never touched.
+- `BulkActionIntegrationTest` — deleting, archiving and marking a selection each reach Gmail before the local copy changes; one Gmail refuses stays put in both places while the rest go; archived mail leaves the inbox list for the archived one and can be moved back; someone else's email id in the body is never touched.
 - `SessionAndRealtimeIntegrationTest` — sessions are stored in the database behind a 30-day cookie; sign-in doesn't force Google's consent screen but connecting Gmail does; the event stream requires sign-in and only carries the user's own events.
 - `WebSecurityIntegrationTest`, `AdminAiSettingsIntegrationTest` — routing, the 401/CSRF handshake, security headers, admin-only AI settings.
 - `AiResponseParserTest` (malformed/hostile LLM JSON), `PriorityEngineTest`, `RiskRuleEngineTest`, `OpenAiCompatibleClientTest` (provider error handling against a fake HTTP server).
@@ -397,5 +401,5 @@ inboxiq/
 
 - **New mail is detected by polling** Gmail's history (every 30 s with the app open, every 5 min without) rather than Gmail push notifications. Push via Cloud Pub/Sub (`users.watch`) would cut the delay to seconds and remove the background beat entirely, but needs a Pub/Sub topic and a public webhook; it would plug into `SyncCoordinator#requestSync` without other changes.
 - **Realtime streams, sync coordination and rate limiting are in-memory** — fine for a single backend instance; a multi-instance deployment should back `EventStreamService`, `SyncCoordinator` and `RateLimiterService` with a shared broker/store (Redis, or Postgres `LISTEN/NOTIFY`). Sessions are already shared (Postgres).
-- **Archived mail stays.** Removing a message from Gmail's inbox without deleting it keeps the InboxIQ copy (and its summary and to-dos); deleting, trashing or marking it spam removes it.
+- **Archived mail is kept, not deleted.** Removing a message from Gmail's inbox moves the InboxIQ copy to the Archived list with its summary and to-dos intact, and putting it back in the Gmail inbox returns it; deleting, trashing or marking it spam removes it.
 - **Thread threading headers** (`In-Reply-To`/`References`) on sent replies rely on Gmail's `threadId` grouping; the original message's RFC 822 `Message-ID` header isn't currently persisted, so header-level threading is best-effort (Gmail's own thread grouping still works correctly).

@@ -69,6 +69,14 @@ public final class EmailSpecifications {
         };
     }
 
+    /**
+     * Which list is being searched: the inbox, or what has been archived.
+     * Never null in practice — leaving it out would mix the two together.
+     */
+    public static Specification<EmailMessage> archived(boolean archived) {
+        return (root, query, cb) -> cb.equal(root.get("archived"), archived);
+    }
+
     public static Specification<EmailMessage> unreadOnly(Boolean unreadOnly) {
         if (unreadOnly == null || !unreadOnly) return null;
         return (root, query, cb) -> cb.isFalse(root.get("read"));

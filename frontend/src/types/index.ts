@@ -67,7 +67,8 @@ export interface RealtimeEventMap {
   'sync.error': SyncErrorEvent;
   'email.received': { gmailMessageId: string };
   'email.saved': { email: EmailSummaryDto };
-  'email.updated': { id: string; read: boolean };
+  /** archived is present only when the message moved in or out of the inbox. */
+  'email.updated': { id: string; read: boolean; archived?: boolean };
   'email.deleted': { id: string };
   'email.analysis.started': AnalysisEvent;
   'email.analysis.completed': AnalysisEvent;
@@ -135,12 +136,12 @@ export interface EmailAnalysisDto {
   failureReason: string | null;
 }
 
-/** What a "delete selected" managed to remove; the rest stay on screen. */
-export interface BulkDeleteResultDto {
-  deletedIds: string[];
+/** What a bulk action managed to do; whatever failed stays on screen. */
+export interface BulkActionResultDto {
+  appliedIds: string[];
   failed: number;
-  /** How many of deletedIds Gmail moved to Trash just now; the rest it no longer had. */
-  movedToTrash: number;
+  /** How many of appliedIds Gmail changed just now; the rest it no longer had. */
+  changedInGmail: number;
 }
 
 export interface EmailSummaryDto {
@@ -151,6 +152,7 @@ export interface EmailSummaryDto {
   receivedAt: string | null;
   read: boolean;
   hasAttachments: boolean;
+  archived: boolean;
   analysis: EmailAnalysisDto | null;
 }
 
@@ -166,6 +168,7 @@ export interface EmailDetailDto {
   receivedAt: string | null;
   read: boolean;
   hasAttachments: boolean;
+  archived: boolean;
   threadId: string | null;
   analysis: EmailAnalysisDto | null;
   actionItems: ActionItemDto[];

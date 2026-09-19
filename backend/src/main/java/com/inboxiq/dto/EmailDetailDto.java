@@ -17,6 +17,7 @@ public record EmailDetailDto(
         Instant receivedAt,
         boolean read,
         boolean hasAttachments,
+        boolean archived,
         String threadId,
         EmailAnalysisDto analysis,
         List<ActionItemDto> actionItems

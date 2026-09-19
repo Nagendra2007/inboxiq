@@ -6,7 +6,16 @@ import { takePrefetchedInbox } from '../api/prefetch';
 import { useAuth } from '../context/AuthContext';
 import { useAppShell } from '../context/AppShell';
 import { useRealtime, useRealtimeEvent, type RealtimeStatus } from '../context/RealtimeContext';
-import type { Category, EmailAnalysisDto, EmailDetailDto, EmailSummaryDto, Page, Priority, RiskLevel } from '../types';
+import type {
+  BulkActionResultDto,
+  Category,
+  EmailAnalysisDto,
+  EmailDetailDto,
+  EmailSummaryDto,
+  Page,
+  Priority,
+  RiskLevel,
+} from '../types';
 import { cn } from '../lib/cn';
 import { INBOX_PAGE_SIZE } from '../lib/constants';
 import { formatTimeAgo, pluralize, titleCase } from '../lib/format';
@@ -19,6 +28,7 @@ import { ConfirmDialog } from '../components/ui/Dialog';
 import { Alert, EmptyState, Spinner } from '../components/ui/Feedback';
 import { useToast } from '../components/ui/Toast';
 import {
+  ArchiveIcon,
   ChevronDownIcon,
   GoogleIcon,
   InboxIcon,
@@ -26,6 +36,7 @@ import {
   MailIcon,
   RefreshIcon,
   SearchIcon,
+  MailOpenIcon,
   SendIcon,
   ShieldCheckIcon,
   SparklesIcon,
@@ -41,21 +52,21 @@ const PAGE_SIZE = INBOX_PAGE_SIZE;
 // Fallback only, while the realtime stream is down: watch for background analysis.
 const LIST_POLL_MS = 5000;
 const LIST_POLL_LIMIT = 24; // ~2 minutes
-// Emails per delete request; the backend refuses more than 100 at a time.
-const BULK_DELETE_BATCH = 50;
+// Emails per bulk request; the backend refuses more than 100 at a time.
+const BULK_ACTION_BATCH = 50;
 const SYNC_FOLLOW_MS = 2000;
 const SYNC_FOLLOW_LIMIT = 30;
 
 /**
  * What actually happened in Gmail, rather than what usually happens. An
  * email Gmail no longer had (deleted there, or in another client, since the
- * last sync) is still removed here — but saying it was "moved to Trash in
- * Gmail" would be a claim about the user's mailbox that isn't true.
+ * last sync) still changes here — but claiming the user's mailbox changed
+ * when it didn't would be a lie about their real mail.
  */
-function gmailOutcome(deleted: number, movedToTrash: number): string {
-  if (movedToTrash === deleted) return 'They were also moved to Trash in Gmail.';
-  if (movedToTrash === 0) return 'They were already gone from Gmail, so only InboxIQ’s copies were removed.';
-  return `${movedToTrash} of them were moved to Trash in Gmail; the rest were already gone from there.`;
+function gmailOutcome(applied: number, changedInGmail: number, didWhat: string): string {
+  if (changedInGmail === applied) return `They were also ${didWhat}.`;
+  if (changedInGmail === 0) return 'Gmail no longer had them, so only InboxIQ’s copies changed.';
+  return `${changedInGmail} of them were ${didWhat}; Gmail no longer had the rest.`;
 }
 
 function oneOf<T extends string>(value: string | null, allowed: readonly T[]): T | '' {
@@ -208,6 +219,8 @@ export function InboxPage() {
   const priority = oneOf(params.get('priority'), PRIORITIES);
   const riskLevel = oneOf(params.get('risk'), RISK_LEVELS);
   const unreadOnly = params.get('unread') === '1';
+  /** The archived list rather than the inbox — a different list, not a filter within it. */
+  const showingArchived = params.get('archived') === '1';
   const selectedId = params.get('email');
 
   const updateParams = useCallback(
@@ -242,8 +255,10 @@ export function InboxPage() {
       priority: priority || undefined,
       riskLevel: riskLevel || undefined,
       unreadOnly: unreadOnly || undefined,
+      // Always sent: a search has to know which of the two lists it's in.
+      archived: showingArchived,
     }),
-    [q, category, priority, riskLevel, unreadOnly]
+    [q, category, priority, riskLevel, unreadOnly, showingArchived]
   );
   const hasFilters = !!(q || category || priority || riskLevel || unreadOnly);
 
@@ -261,6 +276,8 @@ export function InboxPage() {
   const requestId = useRef(0);
   const emailsRef = useRef(emails);
   emailsRef.current = emails;
+  const selectedIdRef = useRef(selectedId);
+  selectedIdRef.current = selectedId;
   // A resync that arrived while the list was still loading runs right after it.
   const reconcileAfterLoad = useRef(false);
   const reconcileRef = useRef<() => void>(() => {});
@@ -280,8 +297,10 @@ export function InboxPage() {
 
   const fetchPage = useCallback(
     (pageIndex: number, size: number, signal?: AbortSignal): Promise<Page<EmailSummaryDto>> =>
-      hasFilters ? EmailApi.search(filters, pageIndex, size, signal) : EmailApi.list(pageIndex, size, signal),
-    [filters, hasFilters]
+      hasFilters
+        ? EmailApi.search(filters, pageIndex, size, signal)
+        : EmailApi.list(pageIndex, size, showingArchived, signal),
+    [filters, hasFilters, showingArchived]
   );
 
   // The very first page may already be on its way from before React mounted.
@@ -290,7 +309,8 @@ export function InboxPage() {
     (signal: AbortSignal): Promise<Page<EmailSummaryDto>> => {
       const first = firstLoad.current;
       firstLoad.current = false;
-      if (first && !hasFilters) {
+      // The prefetch asked for the inbox, so it's no use to the archived list.
+      if (first && !hasFilters && !showingArchived) {
         const prefetched = takePrefetchedInbox();
         // One that failed — or was started before this browser had a session
         // — simply falls back to asking again.
@@ -298,7 +318,7 @@ export function InboxPage() {
       }
       return fetchPage(0, PAGE_SIZE, signal);
     },
-    [fetchPage, hasFilters]
+    [fetchPage, hasFilters, showingArchived]
   );
 
   useEffect(() => {
@@ -533,7 +553,16 @@ export function InboxPage() {
     setEmails((prev) => [email, ...prev.filter((e) => e.id !== email.id)].sort(byNewest));
     setTotal((t) => t + 1);
   });
-  useRealtimeEvent('email.updated', ({ id, read }) => {
+  useRealtimeEvent('email.updated', ({ id, read, archived }) => {
+    // Archived somewhere else (Gmail, another tab): it belongs to the other
+    // list now, so it leaves this one.
+    if (archived !== undefined && archived !== showingArchived) {
+      if (!emailsRef.current.some((e) => e.id === id)) return;
+      setEmails((prev) => prev.filter((e) => e.id !== id));
+      setTotal((t) => Math.max(0, t - 1));
+      if (selectedId === id) select(null);
+      return;
+    }
     setEmails((prev) => prev.map((e) => (e.id === id && e.read !== read ? { ...e, read } : e)));
   });
   useRealtimeEvent('email.deleted', ({ id }) => {
@@ -610,6 +639,9 @@ export function InboxPage() {
     });
   }, []);
 
+  /** Decides which way the one Mark button goes, the way Gmail's does. */
+  const allCheckedAreRead = checkedCount > 0 && emails.every((e) => !checkedIds.has(e.id) || e.read);
+
   const clearChecked = useCallback(() => setCheckedIds(new Set()), []);
   const checkAllLoaded = useCallback(() => setCheckedIds(new Set(emailsRef.current.map((e) => e.id))), []);
 
@@ -631,6 +663,7 @@ export function InboxPage() {
       j: () => move(1),
       k: () => move(-1),
       x: () => selectedId && toggleChecked(selectedId),
+      e: () => selectedId && archiveOne(selectedId),
       Escape: () => {
         if (checkedCount > 0) clearChecked();
         else if (selectedId) select(null);
@@ -702,50 +735,122 @@ export function InboxPage() {
     }
   };
 
-  // --- Delete several ---
+  // --- Acting on a selection ---
   const [confirmBulk, setConfirmBulk] = useState(false);
 
-  const confirmBulkDelete = async () => {
-    const ids = [...checkedIds];
+  /**
+   * Delete and archive both take rows off the list, so they share this: the
+   * rows go at once, the requests run behind them, and anything the server
+   * couldn't apply comes back where it was.
+   */
+  const runRemovingAction = useCallback(async (
+    ids: string[],
+    call: (batch: string[]) => Promise<BulkActionResultDto>,
+    verb: string,
+    inGmail: string
+  ) => {
     if (ids.length === 0) return;
     const going = new Set(ids);
-    const rows = emails.filter((e) => going.has(e.id)); // kept in case any have to come back
+    // Read through refs, not render state, so this stays stable enough to
+    // hand to a memoized row without going stale.
+    const rows = emailsRef.current.filter((e) => going.has(e.id)); // kept in case any have to come back
 
-    setConfirmBulk(false);
     clearChecked();
     hideRows(ids);
-    if (selectedId && going.has(selectedId)) select(null);
+    if (selectedIdRef.current && going.has(selectedIdRef.current)) updateParams({ email: null });
 
-    const deleted = new Set<string>();
-    let movedToTrash = 0;
+    const applied = new Set<string>();
+    let changedInGmail = 0;
     try {
       // The backend takes a bounded number per request; a big selection goes
       // in runs, and each finished run counts even if a later one fails.
-      for (let i = 0; i < ids.length; i += BULK_DELETE_BATCH) {
-        const result = await EmailApi.bulkDelete(ids.slice(i, i + BULK_DELETE_BATCH));
-        result.deletedIds.forEach((id) => deleted.add(id));
-        movedToTrash += result.movedToTrash;
+      for (let i = 0; i < ids.length; i += BULK_ACTION_BATCH) {
+        const result = await call(ids.slice(i, i + BULK_ACTION_BATCH));
+        result.appliedIds.forEach((id) => applied.add(id));
+        changedInGmail += result.changedInGmail;
       }
     } catch {
       // Whatever didn't make it comes back below, which says it better than
       // a message about the request would.
     }
 
-    settleRows([...deleted]);
-    const back = rows.filter((row) => !deleted.has(row.id));
+    settleRows([...applied]);
+    const back = rows.filter((row) => !applied.has(row.id));
     restoreRows(back);
 
-    if (deleted.size > 0) refreshStats();
+    if (applied.size > 0) refreshStats();
     if (back.length > 0) {
       toast.error(
-        `${pluralize(back.length, 'email')} couldn’t be deleted`,
-        deleted.size > 0
-          ? `The other ${deleted.size} went to Trash in Gmail. The rest are back in your inbox.`
-          : 'They’re back in your inbox — please try again.'
+        `${pluralize(back.length, 'email')} couldn’t be ${verb}`,
+        applied.size > 0
+          ? `The other ${applied.size} went through. The rest are back in your list.`
+          : 'They’re back in your list — please try again.'
       );
-    } else if (deleted.size > 0) {
-      toast.success(`${pluralize(deleted.size, 'email')} deleted`, gmailOutcome(deleted.size, movedToTrash));
+    } else if (applied.size > 0) {
+      toast.success(`${pluralize(applied.size, 'email')} ${verb}`, gmailOutcome(applied.size, changedInGmail, inGmail));
     }
+  }, [clearChecked, hideRows, settleRows, restoreRows, refreshStats, toast, updateParams]);
+
+  const confirmBulkDelete = async () => {
+    setConfirmBulk(false);
+    await runRemovingAction([...checkedIds], EmailApi.bulkDelete, 'deleted', 'moved to Trash in Gmail');
+  };
+
+  /** Archiving isn't destructive, so unlike delete it doesn't ask first. */
+  const archive = useCallback(
+    (ids: string[], archived: boolean) =>
+      runRemovingAction(
+        ids,
+        (batch) => EmailApi.bulkArchive(batch, archived),
+        archived ? 'archived' : 'moved to your inbox',
+        archived ? 'taken out of your Gmail inbox' : 'put back in your Gmail inbox'
+      ),
+    [runRemovingAction]
+  );
+
+  const archiveChecked = () => archive([...checkedIds], !showingArchived);
+  const archiveOne = useCallback(
+    (id: string) => archive([id], !emailsRef.current.find((e) => e.id === id)?.archived),
+    [archive]
+  );
+
+  /** Read state doesn't remove rows — it flips a flag, and flips it back if the server refuses. */
+  const markChecked = async (read: boolean) => {
+    const ids = [...checkedIds];
+    if (ids.length === 0) return;
+    const going = new Set(ids);
+    const before = new Map(emails.filter((e) => going.has(e.id)).map((e) => [e.id, e.read]));
+
+    clearChecked();
+    setEmails((prev) => prev.map((e) => (going.has(e.id) ? { ...e, read } : e)));
+
+    const applied = new Set<string>();
+    let changedInGmail = 0;
+    try {
+      for (let i = 0; i < ids.length; i += BULK_ACTION_BATCH) {
+        const result = await EmailApi.bulkSetRead(ids.slice(i, i + BULK_ACTION_BATCH), read);
+        result.appliedIds.forEach((id) => applied.add(id));
+        changedInGmail += result.changedInGmail;
+      }
+    } catch {
+      // Put back below.
+    }
+
+    const reverted = [...before.keys()].filter((id) => !applied.has(id));
+    if (reverted.length > 0) {
+      setEmails((prev) => prev.map((e) => (before.has(e.id) && !applied.has(e.id) ? { ...e, read: before.get(e.id)! } : e)));
+      toast.error(
+        `${pluralize(reverted.length, 'email')} couldn’t be marked`,
+        'They’re back as they were — please try again.'
+      );
+    } else if (applied.size > 0) {
+      const state = read ? 'read' : 'unread';
+      toast.success(
+        `${pluralize(applied.size, 'email')} marked ${state}`,
+        gmailOutcome(applied.size, changedInGmail, `marked ${state} in Gmail`)
+      );
+    }
+    if (applied.size > 0) refreshStats();
   };
 
   const clearFilters = () => {
@@ -780,18 +885,33 @@ export function InboxPage() {
               <IconButton label="Clear selection" size="sm" onClick={clearChecked}>
                 <XIcon className="h-4 w-4" />
               </IconButton>
-              <p className="min-w-0 flex-1 truncate text-sm font-semibold text-white" aria-live="polite">
-                {checkedCount} selected
+              {/* The count never truncates; the "select all" link gives way first. */}
+              <p className="flex min-w-0 flex-1 items-baseline gap-2.5 text-sm font-semibold text-white" aria-live="polite">
+                <span className="shrink-0">{checkedCount} selected</span>
                 {checkedCount < emails.length && (
                   <button
                     type="button"
                     onClick={checkAllLoaded}
-                    className="ml-2.5 text-xs font-medium text-accent-300 transition hover:text-accent-200"
+                    className="truncate text-xs font-medium text-accent-300 transition hover:text-accent-200"
                   >
                     Select all {emails.length}
                   </button>
                 )}
               </p>
+              <IconButton
+                label={allCheckedAreRead ? 'Mark as unread' : 'Mark as read'}
+                size="sm"
+                onClick={() => markChecked(!allCheckedAreRead)}
+              >
+                {allCheckedAreRead ? <MailIcon className="h-4 w-4" /> : <MailOpenIcon className="h-4 w-4" />}
+              </IconButton>
+              <IconButton
+                label={showingArchived ? 'Move back to the inbox' : 'Archive'}
+                size="sm"
+                onClick={archiveChecked}
+              >
+                {showingArchived ? <InboxIcon className="h-4 w-4" /> : <ArchiveIcon className="h-4 w-4" />}
+              </IconButton>
               <Button
                 variant="danger"
                 size="sm"
@@ -805,7 +925,7 @@ export function InboxPage() {
             <div className="flex items-center gap-3">
               <div className="min-w-0 flex-1">
                 <h1 className="flex items-center gap-2 text-lg font-semibold tracking-tight text-white">
-                  Inbox
+                  {showingArchived ? 'Archived' : 'Inbox'}
                   <LiveIndicator status={realtime.status} />
                 </h1>
                 <p className="truncate text-xs text-white/40" aria-live="polite">
@@ -872,6 +992,25 @@ export function InboxPage() {
               )}
             >
               Unread
+            </button>
+            {/* A different list, not a filter within the inbox — so it clears
+                the selection and sends you back to the top. */}
+            <button
+              type="button"
+              aria-pressed={showingArchived}
+              onClick={() => {
+                clearChecked();
+                updateParams({ archived: showingArchived ? null : '1', email: null });
+              }}
+              className={cn(
+                'inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition',
+                showingArchived
+                  ? 'border-accent-500/40 bg-accent-500/10 text-accent-200'
+                  : 'border-white/10 text-white/55 hover:border-white/20 hover:text-white/80'
+              )}
+            >
+              <ArchiveIcon className="h-3.5 w-3.5" />
+              Archived
             </button>
             <FilterSelect value={priority} onChange={(v) => updateParams({ priority: v || null })} label="Filter by priority">
               <option value="">Priority</option>
@@ -948,6 +1087,12 @@ export function InboxPage() {
                   </Button>
                 }
               />
+            ) : showingArchived ? (
+              <EmptyState
+                icon={<ArchiveIcon className="h-5 w-5" />}
+                title="Nothing archived"
+                description="Archiving takes an email out of your inbox — here and in Gmail — without deleting it. Anything you file away shows up here."
+              />
             ) : (
               <EmptyState
                 icon={<InboxIcon className="h-5 w-5" />}
@@ -974,6 +1119,7 @@ export function InboxPage() {
                     selecting={checkedCount > 0}
                     onSelect={select}
                     onToggleSelected={toggleChecked}
+                    onArchive={archiveOne}
                     onDelete={setPendingDeleteId}
                   />
                 ))}
@@ -1005,6 +1151,7 @@ export function InboxPage() {
             preview={selectedRow}
             onClose={() => select(null)}
             onRequestDelete={setPendingDeleteId}
+            onArchive={archiveOne}
             onLoaded={handleLoaded}
             onAnalysisChange={handleAnalysisChange}
           />

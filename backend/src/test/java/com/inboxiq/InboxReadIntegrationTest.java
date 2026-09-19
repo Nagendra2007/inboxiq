@@ -106,7 +106,7 @@ class InboxReadIntegrationTest {
         // Another mailbox's mail must not leak into this one.
         email(otherAccountId, "x1", now, false);
 
-        Page<EmailSummaryRow> page = emails.findSummaries(accountId, PageRequest.of(0, 20));
+        Page<EmailSummaryRow> page = emails.findSummaries(accountId, false, PageRequest.of(0, 20));
 
         assertThat(page.getTotalElements()).isEqualTo(3);
         assertThat(page.getContent()).extracting(EmailSummaryRow::id)
@@ -128,8 +128,8 @@ class InboxReadIntegrationTest {
             email(accountId, "p" + i, now.minus(i, ChronoUnit.MINUTES), false);
         }
 
-        Page<EmailSummaryRow> first = emails.findSummaries(accountId, PageRequest.of(0, 2));
-        Page<EmailSummaryRow> second = emails.findSummaries(accountId, PageRequest.of(1, 2));
+        Page<EmailSummaryRow> first = emails.findSummaries(accountId, false, PageRequest.of(0, 2));
+        Page<EmailSummaryRow> second = emails.findSummaries(accountId, false, PageRequest.of(1, 2));
 
         assertThat(first.getTotalElements()).isEqualTo(5);
         assertThat(first.isLast()).isFalse();
@@ -155,7 +155,7 @@ class InboxReadIntegrationTest {
         statistics.setStatisticsEnabled(true);
         statistics.clear();
 
-        Page<EmailSummaryRow> page = emails.findSummaries(accountId, PageRequest.of(0, 40));
+        Page<EmailSummaryRow> page = emails.findSummaries(accountId, false, PageRequest.of(0, 40));
 
         assertThat(page.getContent()).hasSize(20);
         assertThat(page.getContent()).allSatisfy(row -> assertThat(row.analysis()).isNotNull());
@@ -179,7 +179,7 @@ class InboxReadIntegrationTest {
         statistics.setStatisticsEnabled(true);
         statistics.clear();
 
-        var criteria = new SearchService.SearchCriteria(null, null, null, Priority.HIGH, null, true, null, null);
+        var criteria = new SearchService.SearchCriteria(null, null, null, Priority.HIGH, null, true, false, null, null);
         Page<EmailMessage> page = searchService.search(
                 accountId, criteria, PageRequest.of(0, 40, Sort.by("receivedAt").descending()));
 

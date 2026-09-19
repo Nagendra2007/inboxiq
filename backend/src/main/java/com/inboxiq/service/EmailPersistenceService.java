@@ -122,6 +122,27 @@ public class EmailPersistenceService {
     }
 
     /**
+     * Mirrors archiving done in Gmail: a message whose INBOX label was
+     * removed leaves the inbox list here too, and one put back in the Gmail
+     * inbox comes back. Nothing is deleted either way — the summary and
+     * to-dos survive tidying up. Returns the emails whose state changed.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public List<EmailMessage> applyArchiveStates(UUID mailAccountId, Map<String, Boolean> archivedByProviderId) {
+        if (archivedByProviderId.isEmpty()) return List.of();
+        List<EmailMessage> changed = new ArrayList<>();
+        for (EmailMessage email : emailRepository.findByMailAccountIdAndProviderMessageIdIn(mailAccountId, archivedByProviderId.keySet())) {
+            boolean archived = archivedByProviderId.get(email.getProviderMessageId());
+            if (email.isArchived() != archived) {
+                email.setArchived(archived);
+                changed.add(email);
+            }
+        }
+        emailRepository.saveAll(changed);
+        return changed;
+    }
+
+    /**
      * Removes the local copies of messages deleted, trashed or marked as spam
      * in Gmail (their analysis, to-dos and drafts go with them via ON DELETE
      * CASCADE). Returns the ids of the rows removed.

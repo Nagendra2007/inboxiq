@@ -5,7 +5,7 @@ import type {
   AdministratorsDto,
   AiSettingsDto,
   AiTestResult,
-  BulkDeleteResultDto,
+  BulkActionResultDto,
   UpdateAiSettingsRequest,
   Category,
   DashboardDto,
@@ -44,6 +44,8 @@ export const DashboardApi = {
 
 // --- Emails ---
 export interface SearchFilters {
+  /** Which list to search: the inbox, or what has been archived. */
+  archived?: boolean;
   sender?: string;
   keyword?: string;
   category?: Category;
@@ -53,8 +55,8 @@ export interface SearchFilters {
 }
 
 export const EmailApi = {
-  list: (page: number, size = 25, signal?: AbortSignal) =>
-    apiFetch<Page<EmailSummaryDto>>('/api/emails', { params: { page, size }, signal }),
+  list: (page: number, size = 25, archived = false, signal?: AbortSignal) =>
+    apiFetch<Page<EmailSummaryDto>>('/api/emails', { params: { page, size, archived }, signal }),
 
   search: (filters: SearchFilters, page: number, size = 25, signal?: AbortSignal) =>
     apiFetch<Page<EmailSummaryDto>>('/api/emails/search', { params: { ...filters, page, size }, signal }),
@@ -63,11 +65,28 @@ export const EmailApi = {
 
   delete: (id: string) => apiFetch<void>(`/api/emails/${id}`, { method: 'DELETE' }),
 
-  /** Deletes a selection. Each email is trashed in Gmail in turn, so allow time. */
+  // Bulk actions reach Gmail for each email in turn, so allow them time.
+  /** Trashes a selection in Gmail and removes InboxIQ's copies. */
   bulkDelete: (ids: string[]) =>
-    apiFetch<BulkDeleteResultDto>('/api/emails/bulk-delete', {
+    apiFetch<BulkActionResultDto>('/api/emails/bulk-delete', {
       method: 'POST',
       body: { ids },
+      timeoutMs: LONG_TIMEOUT_MS,
+    }),
+
+  /** Moves a selection out of the inbox, or back into it — here and in Gmail. Nothing is deleted. */
+  bulkArchive: (ids: string[], archived: boolean) =>
+    apiFetch<BulkActionResultDto>('/api/emails/bulk-archive', {
+      method: 'POST',
+      body: { ids, archived },
+      timeoutMs: LONG_TIMEOUT_MS,
+    }),
+
+  /** Marks a selection read or unread, here and in Gmail. */
+  bulkSetRead: (ids: string[], read: boolean) =>
+    apiFetch<BulkActionResultDto>('/api/emails/bulk-read', {
+      method: 'POST',
+      body: { ids, read },
       timeoutMs: LONG_TIMEOUT_MS,
     }),
 

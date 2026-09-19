@@ -40,6 +40,7 @@ public class EmailMapper {
                 email.getReceivedAt(),
                 email.isRead(),
                 email.isHasAttachments(),
+                email.isArchived(),
                 toAnalysisDto(email.getAnalysis())
         );
     }
@@ -54,6 +55,7 @@ public class EmailMapper {
                 row.receivedAt(),
                 row.read(),
                 row.hasAttachments(),
+                row.archived(),
                 toAnalysisDto(row.analysis())
         );
     }
@@ -71,6 +73,7 @@ public class EmailMapper {
                 email.getReceivedAt(),
                 email.isRead(),
                 email.isHasAttachments(),
+                email.isArchived(),
                 email.getThreadId(),
                 toAnalysisDto(email.getAnalysis()),
                 actionItems.stream().map(this::toActionItemDto).toList()

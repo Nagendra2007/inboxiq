@@ -4,7 +4,7 @@ import { cn } from '../lib/cn';
 import { formatListTime, parseSender } from '../lib/format';
 import { useSwipeToDelete } from '../hooks/useSwipeToDelete';
 import { Avatar } from './ui/Avatar';
-import { CheckIcon, SparklesIcon, TrashIcon } from './ui/Icons';
+import { ArchiveIcon, CheckIcon, InboxIcon, SparklesIcon, TrashIcon } from './ui/Icons';
 
 /**
  * Queued or running in the background. New emails arrive with a PENDING
@@ -31,6 +31,7 @@ export const EmailListItem = memo(function EmailListItem({
   selecting,
   onSelect,
   onToggleSelected,
+  onArchive,
   onDelete,
 }: {
   email: EmailSummaryDto;
@@ -40,6 +41,7 @@ export const EmailListItem = memo(function EmailListItem({
   selecting: boolean;
   onSelect: (id: string) => void;
   onToggleSelected: (id: string) => void;
+  onArchive: (id: string) => void;
   onDelete: (id: string) => void;
 }) {
   const sender = parseSender(email.sender);
@@ -137,15 +139,28 @@ export const EmailListItem = memo(function EmailListItem({
           <CheckIcon className="h-4 w-4" strokeWidth={3} />
         </button>
 
-        <button
-          type="button"
-          onClick={() => onDelete(email.id)}
-          aria-label={`Delete email from ${sender.name}`}
-          title="Delete"
-          className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-md text-white/40 opacity-0 transition hover:bg-rose-500/10 hover:text-rose-300 focus-visible:opacity-100 group-hover:opacity-100"
-        >
-          <TrashIcon className="h-3.5 w-3.5" />
-        </button>
+        <span className="absolute right-3 top-3 flex items-center gap-0.5 opacity-0 transition focus-within:opacity-100 group-hover:opacity-100">
+          <button
+            type="button"
+            onClick={() => onArchive(email.id)}
+            aria-label={
+              email.archived ? `Move email from ${sender.name} back to the inbox` : `Archive email from ${sender.name}`
+            }
+            title={email.archived ? 'Move back to the inbox' : 'Archive'}
+            className="flex h-7 w-7 items-center justify-center rounded-md text-white/40 transition hover:bg-white/[0.08] hover:text-white/80"
+          >
+            {email.archived ? <InboxIcon className="h-3.5 w-3.5" /> : <ArchiveIcon className="h-3.5 w-3.5" />}
+          </button>
+          <button
+            type="button"
+            onClick={() => onDelete(email.id)}
+            aria-label={`Delete email from ${sender.name}`}
+            title="Delete"
+            className="flex h-7 w-7 items-center justify-center rounded-md text-white/40 transition hover:bg-rose-500/10 hover:text-rose-300"
+          >
+            <TrashIcon className="h-3.5 w-3.5" />
+          </button>
+        </span>
       </div>
     </li>
   );

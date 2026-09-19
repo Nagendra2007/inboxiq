@@ -28,6 +28,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
@@ -36,19 +37,21 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.oidcLogin;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Deleting a selection. Each email is trashed in Gmail before it is removed
- * locally, one email's failure doesn't take the rest down with it, and no
- * amount of ids in the body reaches anyone else's mail.
+ * Acting on a selection: delete, archive, mark read. Every one of them
+ * reaches Gmail before the local copy changes, one email failing doesn't take
+ * the rest down with it, and no amount of ids in the body reaches anyone
+ * else's mail.
  */
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
-class BulkDeleteIntegrationTest {
+class BulkActionIntegrationTest {
 
     @MockBean private GmailInboxClient gmail;
 
@@ -87,9 +90,15 @@ class BulkDeleteIntegrationTest {
         return json.writeValueAsString(Map.of("ids", ids));
     }
 
+    private String archiveBody(List<UUID> ids, boolean archived) throws Exception {
+        return json.writeValueAsString(Map.of("ids", ids, "archived", archived));
+    }
+
     @BeforeEach
-    void gmailAcceptsTrashing() {
+    void gmailAcceptsEverything() {
         when(gmail.trashMessage(any(), anyString())).thenReturn(true);
+        when(gmail.setMessageArchived(any(), anyString(), anyBoolean())).thenReturn(true);
+        when(gmail.setMessageRead(any(), anyString(), anyBoolean())).thenReturn(true);
     }
 
     @Test
@@ -104,9 +113,9 @@ class BulkDeleteIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body(List.of(one.getId(), two.getId()))))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.deletedIds.length()").value(2))
+                .andExpect(jsonPath("$.appliedIds.length()").value(2))
                 .andExpect(jsonPath("$.failed").value(0))
-                .andExpect(jsonPath("$.movedToTrash").value(2));
+                .andExpect(jsonPath("$.changedInGmail").value(2));
 
         assertThat(emails.findById(one.getId())).isEmpty();
         assertThat(emails.findById(two.getId())).isEmpty();
@@ -129,7 +138,7 @@ class BulkDeleteIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body(List.of(ok.getId(), refused.getId()))))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.deletedIds.length()").value(1))
+                .andExpect(jsonPath("$.appliedIds.length()").value(1))
                 .andExpect(jsonPath("$.failed").value(1));
 
         assertThat(emails.findById(ok.getId())).isEmpty();
@@ -150,7 +159,7 @@ class BulkDeleteIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body(List.of(mine.getId(), theirs.getId()))))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.deletedIds.length()").value(1))
+                .andExpect(jsonPath("$.appliedIds.length()").value(1))
                 .andExpect(jsonPath("$.failed").value(1));
 
         assertThat(emails.findById(mine.getId())).isEmpty();
@@ -176,12 +185,115 @@ class BulkDeleteIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body(List.of(moved.getId(), alreadyGone.getId()))))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.deletedIds.length()").value(2))
+                .andExpect(jsonPath("$.appliedIds.length()").value(2))
                 .andExpect(jsonPath("$.failed").value(0))
-                .andExpect(jsonPath("$.movedToTrash").value(1));
+                .andExpect(jsonPath("$.changedInGmail").value(1));
 
         assertThat(emails.findById(moved.getId())).isEmpty();
         assertThat(emails.findById(alreadyGone.getId())).isEmpty();
+    }
+
+    @Test
+    void archivingTakesEmailsOutOfTheInboxWithoutLosingThem() throws Exception {
+        User user = newUser();
+        MailAccount account = accountFor(user);
+        EmailMessage filed = email(account, "a1");
+        EmailMessage kept = email(account, "a2");
+
+        mvc.perform(post("/api/emails/bulk-archive").with(as(user)).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(archiveBody(List.of(filed.getId()), true)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.appliedIds.length()").value(1))
+                .andExpect(jsonPath("$.failed").value(0))
+                .andExpect(jsonPath("$.changedInGmail").value(1));
+
+        // Still here, with everything derived from it — just not in the inbox.
+        assertThat(emails.findById(filed.getId())).get()
+                .extracting(EmailMessage::isArchived).isEqualTo(true);
+        assertThat(emails.findById(kept.getId())).get()
+                .extracting(EmailMessage::isArchived).isEqualTo(false);
+        verify(gmail).setMessageArchived(any(), eq("a1"), eq(true));
+    }
+
+    @Test
+    void archivedEmailsLeaveTheInboxListAndAppearInTheArchivedOne() throws Exception {
+        User user = newUser();
+        MailAccount account = accountFor(user);
+        EmailMessage filed = email(account, "l1");
+        email(account, "l2");
+
+        mvc.perform(post("/api/emails/bulk-archive").with(as(user)).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(archiveBody(List.of(filed.getId()), true)))
+                .andExpect(status().isOk());
+
+        mvc.perform(get("/api/emails").with(as(user)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.content[0].archived").value(false));
+
+        mvc.perform(get("/api/emails").param("archived", "true").with(as(user)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.content[0].archived").value(true));
+    }
+
+    @Test
+    void archivedEmailsCanBeMovedBackIntoTheInbox() throws Exception {
+        User user = newUser();
+        MailAccount account = accountFor(user);
+        EmailMessage filed = email(account, "back1");
+
+        mvc.perform(post("/api/emails/bulk-archive").with(as(user)).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(archiveBody(List.of(filed.getId()), true)))
+                .andExpect(status().isOk());
+        mvc.perform(post("/api/emails/bulk-archive").with(as(user)).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(archiveBody(List.of(filed.getId()), false)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.appliedIds.length()").value(1));
+
+        assertThat(emails.findById(filed.getId())).get()
+                .extracting(EmailMessage::isArchived).isEqualTo(false);
+        verify(gmail).setMessageArchived(any(), eq("back1"), eq(false));
+    }
+
+    @Test
+    void markingReadPushesTheChangeIntoGmailToo() throws Exception {
+        User user = newUser();
+        MailAccount account = accountFor(user);
+        EmailMessage one = email(account, "r1");
+
+        mvc.perform(post("/api/emails/bulk-read").with(as(user)).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(Map.of("ids", List.of(one.getId()), "read", true))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.appliedIds.length()").value(1));
+
+        assertThat(emails.findById(one.getId())).get().extracting(EmailMessage::isRead).isEqualTo(true);
+        verify(gmail).setMessageRead(any(), eq("r1"), eq(true));
+    }
+
+    @Test
+    void anEmailGmailRefusesToArchiveStaysInTheInbox() throws Exception {
+        User user = newUser();
+        MailAccount account = accountFor(user);
+        EmailMessage refused = email(account, "x9");
+        doThrow(GmailIntegrationException.unavailable(new RuntimeException("Gmail is down")))
+                .when(gmail).setMessageArchived(any(), eq("x9"), eq(true));
+
+        mvc.perform(post("/api/emails/bulk-archive").with(as(user)).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(archiveBody(List.of(refused.getId()), true)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.appliedIds.length()").value(0))
+                .andExpect(jsonPath("$.failed").value(1));
+
+        // Never hidden here while it's still sitting in the Gmail inbox.
+        assertThat(emails.findById(refused.getId())).get()
+                .extracting(EmailMessage::isArchived).isEqualTo(false);
     }
 
     @Test

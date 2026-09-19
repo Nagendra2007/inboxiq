@@ -7,8 +7,10 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.Collection;
@@ -32,17 +34,25 @@ public interface EmailRepository extends JpaRepository<EmailMessage, UUID>, JpaS
      * One page of the inbox, in one query: just the listed columns plus the
      * analysis, never the message bodies. See {@link EmailSummaryRow} for why
      * the list deliberately doesn't go through entities.
+     *
+     * {@code archived} picks which list — the inbox or everything put away —
+     * exactly as the INBOX label does in Gmail.
      */
     @Query(value = """
            select new com.inboxiq.repository.EmailSummaryRow(
-                  e.id, e.sender, e.subject, e.snippet, e.receivedAt, e.read, e.hasAttachments, a)
+                  e.id, e.sender, e.subject, e.snippet, e.receivedAt, e.read, e.hasAttachments, e.archived, a)
            from EmailMessage e
            left join e.analysis a
-           where e.mailAccount.id = :mailAccountId
+           where e.mailAccount.id = :mailAccountId and e.archived = :archived
            order by e.receivedAt desc
            """,
-           countQuery = "select count(e) from EmailMessage e where e.mailAccount.id = :mailAccountId")
-    Page<EmailSummaryRow> findSummaries(@Param("mailAccountId") UUID mailAccountId, Pageable pageable);
+           countQuery = """
+           select count(e) from EmailMessage e
+           where e.mailAccount.id = :mailAccountId and e.archived = :archived
+           """)
+    Page<EmailSummaryRow> findSummaries(@Param("mailAccountId") UUID mailAccountId,
+                                        @Param("archived") boolean archived,
+                                        Pageable pageable);
 
     /**
      * Search results still come back as entities (the filters run against the
@@ -61,14 +71,29 @@ public interface EmailRepository extends JpaRepository<EmailMessage, UUID>, JpaS
     @Query("select e from EmailMessage e join fetch e.mailAccount a where a.id = :mailAccountId and e.id in :ids")
     List<EmailMessage> findOwned(@Param("mailAccountId") UUID mailAccountId, @Param("ids") Collection<UUID> ids);
 
-    /** The three email totals on the dashboard, in a single round trip. */
+    /** Puts a whole selection in or out of the inbox in one statement. */
+    @Modifying(clearAutomatically = true)
+    @Transactional
+    @Query("update EmailMessage e set e.archived = :archived where e.id in :ids")
+    void setArchived(@Param("ids") Collection<UUID> ids, @Param("archived") boolean archived);
+
+    /** Marks a whole selection read or unread in one statement. */
+    @Modifying(clearAutomatically = true)
+    @Transactional
+    @Query("update EmailMessage e set e.read = :read where e.id in :ids")
+    void setRead(@Param("ids") Collection<UUID> ids, @Param("read") boolean read);
+
+    /**
+     * The three email totals on the dashboard, in a single round trip.
+     * Archived mail is left out: these describe the inbox.
+     */
     @Query("""
            select new com.inboxiq.repository.EmailCounts(
                   count(e),
                   count(case when e.read = false then 1 end),
                   count(case when e.receivedAt > :since then 1 end))
            from EmailMessage e
-           where e.mailAccount.id = :mailAccountId
+           where e.mailAccount.id = :mailAccountId and e.archived = false
            """)
     EmailCounts countsFor(@Param("mailAccountId") UUID mailAccountId, @Param("since") Instant since);
 

@@ -11,6 +11,7 @@ import com.google.api.services.gmail.model.HistoryMessageDeleted;
 import com.google.api.services.gmail.model.ListHistoryResponse;
 import com.google.api.services.gmail.model.ListMessagesResponse;
 import com.google.api.services.gmail.model.Message;
+import com.google.api.services.gmail.model.ModifyMessageRequest;
 import com.inboxiq.entity.MailAccount;
 import com.inboxiq.exception.GmailIntegrationException;
 import jakarta.mail.Session;
@@ -56,6 +57,7 @@ public class GmailInboxClient {
     }
 
     private static final String LABEL_INBOX = "INBOX";
+    private static final String LABEL_UNREAD = "UNREAD";
     private static final List<String> SYNC_HISTORY_TYPES =
             List.of("messageAdded", "messageDeleted", "labelAdded", "labelRemoved");
 
@@ -293,6 +295,49 @@ public class GmailInboxClient {
                 // sync. Not an error — but the caller shouldn't tell the user
                 // it moved anything to Trash either.
                 log.info("Message already absent from Gmail when trashing; treating as already deleted");
+                return false;
+            }
+            throw translate(e);
+        } catch (IOException e) {
+            throw GmailIntegrationException.unavailable(e);
+        }
+    }
+
+    /**
+     * Takes the message out of the Gmail inbox without deleting it, or puts
+     * it back — Gmail's own Archive and Move to Inbox, which are just the
+     * INBOX label coming off and going on. Returns false when Gmail no
+     * longer has the message.
+     */
+    public boolean setMessageArchived(MailAccount account, String messageId, boolean archived) {
+        return archived
+                ? modifyLabels(account, messageId, null, List.of(LABEL_INBOX), "archiving")
+                : modifyLabels(account, messageId, List.of(LABEL_INBOX), null, "moving back to the inbox");
+    }
+
+    /**
+     * Mirrors InboxIQ's own read state into Gmail, so triaging here doesn't
+     * leave a real inbox full of unread mail. Returns false when Gmail no
+     * longer has the message.
+     */
+    public boolean setMessageRead(MailAccount account, String messageId, boolean read) {
+        return read
+                ? modifyLabels(account, messageId, null, List.of(LABEL_UNREAD), "marking read")
+                : modifyLabels(account, messageId, List.of(LABEL_UNREAD), null, "marking unread");
+    }
+
+    private boolean modifyLabels(MailAccount account, String messageId,
+                                 List<String> add, List<String> remove, String what) {
+        try {
+            Gmail gmail = clientFactory.forAccount(account);
+            ModifyMessageRequest request = new ModifyMessageRequest()
+                    .setAddLabelIds(add)
+                    .setRemoveLabelIds(remove);
+            gmail.users().messages().modify(USER_ID, messageId, request).execute();
+            return true;
+        } catch (GoogleJsonResponseException e) {
+            if (e.getStatusCode() == 404) {
+                log.info("Message no longer in Gmail when {}; leaving it to the next sync", what);
                 return false;
             }
             throw translate(e);

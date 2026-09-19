@@ -23,5 +23,6 @@ public record EmailSummaryRow(
         Instant receivedAt,
         boolean read,
         boolean hasAttachments,
+        boolean archived,
         EmailAnalysis analysis
 ) {}

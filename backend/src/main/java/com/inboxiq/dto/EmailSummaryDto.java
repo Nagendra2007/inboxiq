@@ -12,5 +12,6 @@ public record EmailSummaryDto(
         Instant receivedAt,
         boolean read,
         boolean hasAttachments,
-        EmailAnalysisDto analysis // may be null if analysis hasn't run yet
+        boolean archived,
+        EmailAnalysisDto analysis // may be null if analysis has not run yet
 ) {}

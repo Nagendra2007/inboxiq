@@ -318,3 +318,18 @@ export const GoogleIcon =({ className = 'h-5 w-5' }: { className?: string }) => 
     <path fill="#EA4335" d="M12 4.77c2.26 0 3.78.93 4.65 1.71l3.39-3.24C17.94 1.19 15.24 0 12 0 7.35 0 3.33 2.7 1.33 6.64l3.85 2.83c.96-2.86 3.65-4.7 6.82-4.7z" />
   </svg>
 );
+
+export const ArchiveIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="2" y="3" width="20" height="5" rx="1" />
+    <path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8" />
+    <path d="M10 12h4" />
+  </Svg>
+);
+
+export const MailOpenIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M2 10.5 12 3l10 7.5V19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2z" />
+    <path d="m2 10.5 10 7 10-7" />
+  </Svg>
+);
