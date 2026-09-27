@@ -4,7 +4,7 @@ import { errorMessage, isAbortError } from '../api/client';
 import { useRealtime, useRealtimeEvent } from '../context/RealtimeContext';
 import type { EmailAnalysisDto, EmailDetailDto, EmailSummaryDto, ThreadMessageDto } from '../types';
 import { cn } from '../lib/cn';
-import { deadlineInfo, formatFullDate, formatListTime, parseSender } from '../lib/format';
+import { deadlineInfo, formatFullDate, formatListTime, parseSender, shortSummary } from '../lib/format';
 import { CategoryPill, PriorityBadge, RiskBadge, SignalPill } from './Badges';
 import { ReplyComposer } from './ReplyComposer';
 import { Avatar } from './ui/Avatar';
@@ -490,7 +490,7 @@ export function EmailDetailPane({
               </div>
             ) : analysis?.summary ? (
               <>
-                <p className="text-[15px] leading-relaxed text-white/85">{analysis.summary}</p>
+                <p className="text-[15px] leading-relaxed text-white/85">{shortSummary(analysis.summary)}</p>
                 {analysis.keyPoints.length > 0 && (
                   <ul className="mt-3 space-y-1.5">
                     {analysis.keyPoints.map((point, i) => (

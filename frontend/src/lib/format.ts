@@ -27,6 +27,41 @@ export function listDayLabel(iso: string | null): string {
   return date.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
 }
 
+/** The summary length the analysis prompt asks for; a little slack on top. */
+const SUMMARY_WORD_BUDGET = 28;
+
+/**
+ * Trims a stored AI summary to the length the current prompt asks for.
+ *
+ * The prompt was shortened after most of these were written, so older
+ * analyses still hold two to four sentences. Re-running the model over every
+ * old email to shorten prose it already wrote isn't worth the calls — and an
+ * LLM summary says what the email is in its first sentence and elaborates
+ * after, so keeping whole leading sentences inside a word budget is the same
+ * edit the model would make. Whole sentences only: a mid-sentence ellipsis
+ * reads like a bug rather than an edit, so only a summary that never
+ * punctuates at all gets cut inside one.
+ */
+export function shortSummary(summary: string | null | undefined, budget = SUMMARY_WORD_BUDGET): string {
+  if (!summary) return '';
+  const text = summary.trim().replace(/\s+/g, ' ');
+  const sentences = text.match(/[^.!?]+[.!?]*/g) ?? [text];
+  const kept: string[] = [];
+  let words = 0;
+  for (const sentence of sentences) {
+    const count = sentence.trim().split(' ').length;
+    // The first sentence always survives: no summary at all is worse than
+    // one that runs a few words long.
+    if (kept.length > 0 && (kept.length >= 2 || words + count > budget)) break;
+    kept.push(sentence.trim());
+    words += count;
+  }
+  const head = kept.join(' ');
+  const headWords = head.split(' ');
+  if (headWords.length <= 60) return head;
+  return headWords.slice(0, budget).join(' ').replace(/[,;:.]+$/, '') + '\u2026';
+}
+
 /** Gmail-style list timestamp: time today, "Yesterday", weekday this week, then a date. */
 export function formatListTime(iso: string | null): string {
   if (!iso) return '';

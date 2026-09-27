@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import type { EmailSummaryDto } from '../types';
 import { cn } from '../lib/cn';
-import { formatListTime, parseSender } from '../lib/format';
+import { formatListTime, parseSender, shortSummary } from '../lib/format';
 import { useSwipeToDelete } from '../hooks/useSwipeToDelete';
 import { Avatar } from './ui/Avatar';
 import { ArchiveIcon, CheckIcon, InboxIcon, PaperclipIcon, ReplyIcon, SparklesIcon, TrashIcon } from './ui/Icons';
@@ -61,7 +61,7 @@ export const EmailListItem = memo(function EmailListItem({
 }) {
   const sender = parseSender(email.sender);
   const pending = isAnalysisPending(email);
-  const summary = email.analysis?.summary || email.snippet;
+  const summary = email.analysis?.summary ? shortSummary(email.analysis.summary) : email.snippet;
   const unread = !email.read;
   const rail = riskRail(email);
   const needsReply = !pending && email.analysis?.requiresReply === true;
