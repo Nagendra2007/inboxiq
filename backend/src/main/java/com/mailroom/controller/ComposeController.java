@@ -1,9 +1,12 @@
 package com.mailroom.controller;
 
+import com.mailroom.dto.ContactDto;
 import com.mailroom.dto.AdjustReplyRequest;
 import com.mailroom.dto.ComposeGenerateRequest;
 import com.mailroom.dto.GeneratedReplyDto;
 import com.mailroom.dto.SendReplyRequest;
+import com.mailroom.dto.VoiceCommandRequest;
+import com.mailroom.dto.VoiceCommandResultDto;
 import com.mailroom.entity.GeneratedReply;
 import com.mailroom.entity.MailAccount;
 import com.mailroom.entity.User;
@@ -11,6 +14,7 @@ import com.mailroom.mapper.EmailMapper;
 import com.mailroom.security.CurrentUserProvider;
 import com.mailroom.service.AssistantCommandService;
 import com.mailroom.service.MailAccountService;
+import com.mailroom.service.VoiceComposeService;
 import com.mailroom.service.ReplyService;
 import jakarta.validation.Valid;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,7 +22,9 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.GetMapping;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -37,17 +43,47 @@ public class ComposeController {
     private final ReplyService replyService;
     private final EmailMapper emailMapper;
     private final AssistantCommandService assistantCommandService;
+    private final VoiceComposeService voiceComposeService;
 
     public ComposeController(CurrentUserProvider currentUserProvider,
                               MailAccountService mailAccountService,
                               ReplyService replyService,
                               EmailMapper emailMapper,
-                              AssistantCommandService assistantCommandService) {
+                              AssistantCommandService assistantCommandService,
+                              VoiceComposeService voiceComposeService) {
         this.currentUserProvider = currentUserProvider;
         this.mailAccountService = mailAccountService;
         this.replyService = replyService;
         this.emailMapper = emailMapper;
         this.assistantCommandService = assistantCommandService;
+        this.voiceComposeService = voiceComposeService;
+    }
+
+    /**
+     * Splits one spoken instruction into the fields {@code /generate} takes.
+     * Deliberately stops there: it answers with what it understood and never
+     * drafts or sends, because the recipient came out of a transcript and a
+     * transcript is least reliable on exactly the part that matters most.
+     */
+    @PostMapping("/voice-command")
+    public VoiceCommandResultDto voiceCommand(@Valid @RequestBody VoiceCommandRequest request) {
+        MailAccount account = currentAccount(currentUserProvider.getCurrentUser());
+        VoiceComposeService.ParsedCommand parsed = voiceComposeService.parse(account.getId(), request.text());
+        return new VoiceCommandResultDto(
+                parsed.heardRecipient(),
+                parsed.candidates().stream().map(c -> new ContactDto(c.name(), c.email())).toList(),
+                parsed.subject(),
+                parsed.instruction(),
+                parsed.confident());
+    }
+
+    /** The address book, for the composer's recipient field to autocomplete from. */
+    @GetMapping("/contacts")
+    public List<ContactDto> contacts() {
+        MailAccount account = currentAccount(currentUserProvider.getCurrentUser());
+        return voiceComposeService.contacts(account.getId()).stream()
+                .map(c -> new ContactDto(c.name(), c.email()))
+                .toList();
     }
 
     @PostMapping("/generate")
