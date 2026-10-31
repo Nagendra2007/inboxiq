@@ -23,6 +23,7 @@ type SpeechRecognitionInstance = {
   start: () => void;
   stop: () => void;
   abort: () => void;
+  onstart: (() => void) | null;
   onresult: ((event: SpeechRecognitionResultEvent) => void) | null;
   onerror: ((event: { error: string }) => void) | null;
   onend: (() => void) | null;
@@ -69,6 +70,8 @@ export interface SpeechRecognitionState {
   /** False in Firefox and older Safari. Check before rendering a mic. */
   supported: boolean;
   listening: boolean;
+  /** Clicked, but the engine has not confirmed yet. */
+  starting: boolean;
   /** Settled words. Grows as you speak; cleared by `start`. */
   transcript: string;
   /** The current guess, still being revised. Show it faint; never store it. */
@@ -83,6 +86,9 @@ export interface SpeechRecognitionState {
 export function useSpeechRecognition(lang = 'en-IN'): SpeechRecognitionState {
   const [supported] = useState(() => constructor() !== null);
   const [listening, setListening] = useState(false);
+  // True between the click and the engine confirming, so the button can say
+  // so instead of looking inert while Chrome asks for permission.
+  const [starting, setStarting] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [interim, setInterim] = useState('');
   const [level, setLevel] = useState(0);
@@ -92,6 +98,8 @@ export function useSpeechRecognition(lang = 'en-IN'): SpeechRecognitionState {
   // What the user wants, as opposed to what the engine is currently doing.
   // The two drift apart constantly, which is the whole problem below.
   const wantListening = useRef(false);
+  // Topped up by each result, drained by the meter. How much the bars move.
+  const energyRef = useRef(0);
 
   useEffect(() => {
     const Ctor = constructor();
@@ -113,6 +121,18 @@ export function useSpeechRecognition(lang = 'en-IN'): SpeechRecognitionState {
       }
       if (settled) setTranscript((prev) => (prev ? `${prev} ${settled.trim()}` : settled.trim()));
       setInterim(pending);
+      // Longer bursts push the bars higher, so the meter tracks speaking
+      // rather than simply switching on.
+      const spoken = (settled + pending).trim().length;
+      if (spoken > 0) energyRef.current = Math.min(1, 0.45 + Math.min(0.55, spoken / 40));
+    };
+
+    // The engine's own word for it. `listening` follows this rather than
+    // the click, so the UI can never show a live microphone over a
+    // recogniser that failed to start.
+    recognition.onstart = () => {
+      setListening(true);
+      setStarting(false);
     };
 
     recognition.onerror = (event) => {
@@ -120,6 +140,7 @@ export function useSpeechRecognition(lang = 'en-IN'): SpeechRecognitionState {
       if (message) setError(message);
       if (FATAL.has(event.error)) {
         wantListening.current = false;
+        setStarting(false);
         setListening(false);
       }
     };
@@ -132,6 +153,7 @@ export function useSpeechRecognition(lang = 'en-IN'): SpeechRecognitionState {
     recognition.onend = () => {
       setInterim('');
       if (!wantListening.current) {
+        setStarting(false);
         setListening(false);
         return;
       }
@@ -139,6 +161,7 @@ export function useSpeechRecognition(lang = 'en-IN'): SpeechRecognitionState {
         recognition.start();
       } catch {
         wantListening.current = false;
+        setStarting(false);
         setListening(false);
       }
     };
@@ -146,6 +169,7 @@ export function useSpeechRecognition(lang = 'en-IN'): SpeechRecognitionState {
     recognitionRef.current = recognition;
     return () => {
       wantListening.current = false;
+      recognition.onstart = null;
       recognition.onresult = null;
       recognition.onerror = null;
       recognition.onend = null;
@@ -154,67 +178,37 @@ export function useSpeechRecognition(lang = 'en-IN'): SpeechRecognitionState {
     };
   }, [lang]);
 
-  // A level meter off a second microphone stream. The recogniser keeps its
-  // own stream and does not share it, but browsers allow several readers of
-  // one device. Entirely cosmetic, so every failure here is swallowed: a
-  // flat meter is better than a broken dictation box.
+  // The meter runs off the recogniser's own output, not off a second
+  // microphone stream.
+  //
+  // It used to open its own getUserMedia stream and read an AnalyserNode,
+  // which is the obvious way to build a level meter and was a mistake here:
+  // the recogniser holds the microphone, and a second reader of the same
+  // device can stop it receiving audio at all — on Windows especially. The
+  // animation then kept moving while recognition quietly produced nothing,
+  // which is the worst possible failure, because the moving bars say it is
+  // working.
+  //
+  // Driving it from the arrival of results instead means a moving bar
+  // proves the thing that actually matters: words are being recognised. If
+  // it sits flat while you talk, recognition is not hearing you, and that
+  // is worth seeing rather than hiding behind a decorative pulse.
   useEffect(() => {
     if (!listening) {
       setLevel(0);
       return;
     }
-    let stream: MediaStream | null = null;
-    let audio: AudioContext | null = null;
-    let frame = 0;
-    let stopped = false;
-    let last = 0;
-
-    navigator.mediaDevices
-      ?.getUserMedia({ audio: true })
-      .then((granted) => {
-        if (stopped) {
-          granted.getTracks().forEach((t) => t.stop());
-          return;
-        }
-        stream = granted;
-        const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-        audio = new Ctx();
-        const analyser = audio.createAnalyser();
-        analyser.fftSize = 512;
-        audio.createMediaStreamSource(granted).connect(analyser);
-        const samples = new Uint8Array(analyser.frequencyBinCount);
-
-        const tick = () => {
-          analyser.getByteTimeDomainData(samples);
-          let sum = 0;
-          for (let i = 0; i < samples.length; i++) {
-            const deviation = (samples[i] - 128) / 128;
-            sum += deviation * deviation;
-          }
-          const rms = Math.sqrt(sum / samples.length);
-          // Speech sits low in this range, so lift it before clamping, then
-          // smooth: a meter that tracks every frame exactly looks like noise.
-          const scaled = Math.min(1, rms * 4);
-          const next = scaled > last ? scaled : last * 0.82 + scaled * 0.18;
-          // ~20fps of state is plenty for the eye and cheap for React.
-          if (Math.abs(next - last) > 0.02) {
-            last = next;
-            setLevel(next);
-          }
-          frame = requestAnimationFrame(tick);
-        };
-        frame = requestAnimationFrame(tick);
-      })
-      .catch(() => {
-        /* No meter. Dictation still works. */
+    const id = window.setInterval(() => {
+      setLevel((current) => {
+        const target = energyRef.current;
+        // Decay what the last result deposited, so speech makes the bars
+        // climb and a pause lets them fall back rather than freeze.
+        energyRef.current = Math.max(0, target - 0.12);
+        const next = current * 0.55 + target * 0.45;
+        return next < 0.02 ? 0 : next;
       });
-
-    return () => {
-      stopped = true;
-      cancelAnimationFrame(frame);
-      stream?.getTracks().forEach((t) => t.stop());
-      audio?.close().catch(() => {});
-    };
+    }, 60);
+    return () => window.clearInterval(id);
   }, [listening]);
 
   const start = useCallback(() => {
@@ -223,21 +217,35 @@ export function useSpeechRecognition(lang = 'en-IN'): SpeechRecognitionState {
     setError('');
     setTranscript('');
     setInterim('');
+    energyRef.current = 0;
     wantListening.current = true;
+    setStarting(true);
     try {
       recognition.start();
-      setListening(true);
     } catch {
-      // Already running: the browser throws rather than no-opping.
-      setListening(true);
+      // The engine throws InvalidStateError when it is already running —
+      // after an auto-restart that this click raced, usually. Tear it down
+      // and try once more rather than reporting a failure that is really a
+      // double start. Swallowing this and claiming to be listening anyway
+      // was the original bug: the bars moved over a dead recogniser.
+      try {
+        recognition.abort();
+        recognition.start();
+      } catch {
+        wantListening.current = false;
+        setStarting(false);
+        setListening(false);
+        setError('The microphone could not be started. Reload the page and try again.');
+      }
     }
   }, []);
 
   const stop = useCallback(() => {
     wantListening.current = false;
     recognitionRef.current?.stop();
+    setStarting(false);
     setListening(false);
   }, []);
 
-  return { supported, listening, transcript, interim, level, error, start, stop };
+  return { supported, listening, starting, transcript, interim, level, error, start, stop };
 }
