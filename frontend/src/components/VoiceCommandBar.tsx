@@ -31,6 +31,10 @@ export function VoiceCommandBar({
   const [result, setResult] = useState<VoiceCommandResultDto | null>(null);
   const [error, setError] = useState('');
   const transcriptRef = useRef<HTMLDivElement>(null);
+  // Set when the engine has been running a while and produced nothing. The
+  // commonest cause is the wrong input device, and silence is the one state
+  // a voice UI must not present as normal.
+  const [heardNothing, setHeardNothing] = useState(false);
 
   // Keep the newest words in view as they arrive, the way a dictation box
   // on a phone does.
@@ -38,6 +42,21 @@ export function VoiceCommandBar({
     const box = transcriptRef.current;
     if (box) box.scrollTop = box.scrollHeight;
   }, [speech.transcript, speech.interim]);
+
+  // Six seconds of a running recogniser with nothing to show for it is not
+  // a slow start, it is a microphone that is not reaching Chrome.
+  useEffect(() => {
+    if (!speech.listening) {
+      setHeardNothing(false);
+      return;
+    }
+    if (speech.transcript || speech.interim) {
+      setHeardNothing(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setHeardNothing(true), 6000);
+    return () => window.clearTimeout(timer);
+  }, [speech.listening, speech.transcript, speech.interim]);
 
   // Nothing to offer where the browser has no recognition at all. Firefox
   // users get the normal form, which has always worked.
@@ -121,6 +140,8 @@ export function VoiceCommandBar({
               <SparklesIcon className="h-3.5 w-3.5 animate-pulse text-accent-400" />
               Working out what you meant…
             </span>
+          ) : speech.starting ? (
+            <span className="text-sm text-white/50">Starting the microphone…</span>
           ) : listening ? (
             <span className="flex items-center gap-2.5 text-sm text-rose-200/80">
               <VoiceWave level={speech.level} className="text-rose-300" />
@@ -220,6 +241,15 @@ export function VoiceCommandBar({
 
       {result && !result.confident && result.instruction && (
         <p className="mt-2 text-xs text-white/40">That was hard to make out — check the wording before you generate.</p>
+      )}
+
+      {heardNothing && (
+        <div className="mt-3">
+          <Alert tone="warning">
+            Nothing is coming through. Check that the right microphone is selected in Chrome — click the padlock
+            beside the address bar, then Microphone — and that it isn't muted.
+          </Alert>
+        </div>
       )}
 
       {(error || speech.error) && (
