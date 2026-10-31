@@ -1,8 +1,8 @@
 name: Deploy to EC2
 
-# Builds the image and rolls it out to the instance. The build runs on an
-# arm64 runner because t4g instances are Graviton — building arm64 under
-# QEMU on an x86 runner works but takes about four times as long.
+# Builds the image and rolls it out to the instance. The platform below must
+# match the instance family: t3 is Intel, so linux/amd64, built natively on
+# the standard x86 runner. Change the instance family and both must change.
 #
 # Setup, once:
 #   repository VARIABLE  EC2_HOST         the instance's hostname or IP
@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   image:
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
@@ -51,7 +51,7 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: .
-          platforms: linux/arm64
+          platforms: linux/amd64
           push: true
           tags: |
             ${{ steps.name.outputs.image }}:latest
