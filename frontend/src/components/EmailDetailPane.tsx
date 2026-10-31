@@ -7,6 +7,7 @@ import { cn } from '../lib/cn';
 import { deadlineInfo, formatFullDate, formatListTime, parseSender, shortSummary } from '../lib/format';
 import { CategoryPill, PriorityBadge, RiskBadge, SignalPill } from './Badges';
 import { ReplyComposer } from './ReplyComposer';
+import { EmailBodyFrame } from './EmailBodyFrame';
 import { Avatar } from './ui/Avatar';
 import { Button, IconButton } from './ui/Button';
 import { Checkbox } from './ui/Checkbox';
@@ -598,9 +599,7 @@ export function EmailDetailPane({
                     <span className="skeleton block h-3.5 w-3/4" />
                   </div>
                 ) : email.bodyHtml ? (
-                  <div className="overflow-x-auto rounded-xl bg-paper px-5 py-4 shadow-inner ring-1 ring-white/[0.06]">
-                    <div className="email-html" dangerouslySetInnerHTML={{ __html: email.bodyHtml }} />
-                  </div>
+                  <EmailBodyFrame html={email.bodyHtml} />
                 ) : email.bodyText ? (
                   <p className="whitespace-pre-wrap break-words px-1 text-sm leading-relaxed text-white/75">{email.bodyText}</p>
                 ) : (
