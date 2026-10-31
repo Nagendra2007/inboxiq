@@ -19,6 +19,7 @@ import type {
   SyncStatusDto,
   ThreadMessageDto,
   UserDto,
+  VoiceCommandResultDto,
 } from '../types';
 
 // --- Auth ---
@@ -123,6 +124,18 @@ export const EmailApi = {
 
 // --- Compose (brand-new email, not a reply) ---
 export const ComposeApi = {
+  /**
+   * Splits one spoken instruction into the composer's fields. Answers with
+   * what it understood, including candidate recipients — it never drafts and
+   * never sends, because the recipient came out of a transcript.
+   */
+  voiceCommand: (text: string) =>
+    apiFetch<VoiceCommandResultDto>('/api/compose/voice-command', {
+      method: 'POST',
+      body: { text },
+      timeoutMs: LONG_TIMEOUT_MS,
+    }),
+
   generate: (toAddress: string, subject: string, instruction: string) =>
     apiFetch<GeneratedReplyDto>('/api/compose/generate', {
       method: 'POST',

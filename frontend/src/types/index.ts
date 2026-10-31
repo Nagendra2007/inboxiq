@@ -235,3 +235,24 @@ export interface ApiErrorBody {
 }
 
 export type AdjustButton = 'MAKE_SHORTER' | 'MAKE_FORMAL' | 'MAKE_FRIENDLY' | 'REGENERATE';
+
+/** Someone who has written to this mailbox. */
+export interface ContactDto {
+  name: string;
+  email: string;
+}
+
+/**
+ * What a spoken composer instruction was understood to mean — offered back
+ * for confirmation rather than acted on.
+ */
+export interface VoiceCommandResultDto {
+  /** What the speaker called the recipient, so the UI can say "you said Priya". */
+  heardRecipient: string | null;
+  /** Ranked matches from the mailbox's own contacts. May be empty, or hold several. */
+  candidates: ContactDto[];
+  subject: string | null;
+  instruction: string | null;
+  /** False when the transcript was too garbled to split; show the words instead. */
+  confident: boolean;
+}

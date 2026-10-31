@@ -3,6 +3,7 @@ package com.mailroom.ai;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mailroom.ai.dto.EmailAnalysisAiResult;
+import com.mailroom.ai.dto.ComposeCommandAiResult;
 import com.mailroom.ai.dto.ReplyAiResult;
 import com.mailroom.ai.dto.ThreadSummaryAiResult;
 import com.mailroom.entity.EmailCategory;
@@ -86,6 +87,23 @@ public class AiResponseParser {
                 text(node, "summary", "No summary available."),
                 textArray(node, "keyPoints"),
                 textArray(node, "openQuestions")
+        );
+    }
+
+    public ComposeCommandAiResult parseComposeCommand(String raw) {
+        JsonNode node = parseJson(raw);
+        String instruction = text(node, "instruction", null);
+        if (instruction == null || instruction.isBlank()) {
+            // Nothing to draft from. Treated as "I did not understand" rather
+            // than as an error, because the caller offers the words back to
+            // the user to edit instead of failing at them.
+            return new ComposeCommandAiResult(null, null, null, false);
+        }
+        return new ComposeCommandAiResult(
+                text(node, "recipient", null),
+                text(node, "subject", null),
+                instruction.strip(),
+                boolValue(node, "confident", true)
         );
     }
 

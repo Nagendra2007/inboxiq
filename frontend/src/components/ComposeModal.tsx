@@ -10,6 +10,7 @@ import { Alert } from './ui/Feedback';
 import { useToast } from './ui/Toast';
 import { ArrowRightIcon, CheckCircleIcon, ChevronLeftIcon, SendIcon, SparklesIcon } from './ui/Icons';
 import { DraftEditor, SendPreview } from './DraftEditor';
+import { VoiceCommandBar } from './VoiceCommandBar';
 
 type Step = 'write' | 'edit' | 'confirm' | 'sent';
 
@@ -264,6 +265,17 @@ export function ComposeModal({ onClose, onSent }: { onClose: () => void; onSent?
                 />
               </label>
             </div>
+
+            {step === 'write' && (
+              <VoiceCommandBar
+                disabled={generating}
+                onFilled={({ toAddress: spokenTo, subject: spokenSubject, instruction: spokenInstruction }) => {
+                  if (spokenTo) setToAddress(spokenTo);
+                  if (spokenSubject) setSubject(spokenSubject);
+                  setInstruction(spokenInstruction);
+                }}
+              />
+            )}
 
             {step === 'write' && (
               <label className="block">

@@ -55,6 +55,20 @@ public interface EmailRepository extends JpaRepository<EmailMessage, UUID>, JpaS
                                         Pageable pageable);
 
     /**
+     * Everyone who has written to this mailbox, most recently first. One
+     * grouped scan of the index that already exists for the inbox list, so
+     * this costs about what one page of the inbox costs.
+     */
+    @Query("""
+           select new com.mailroom.repository.ContactRow(e.sender, max(e.receivedAt), count(e))
+           from EmailMessage e
+           where e.mailAccount.id = :mailAccountId and e.sender is not null
+           group by e.sender
+           order by max(e.receivedAt) desc
+           """)
+    List<ContactRow> findContacts(@Param("mailAccountId") UUID mailAccountId, Pageable pageable);
+
+    /**
      * Search results still come back as entities (the filters run against the
      * analysis join), but the analysis is fetched along with them rather than
      * one extra query per row.
