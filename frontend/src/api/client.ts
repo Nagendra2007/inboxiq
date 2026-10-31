@@ -95,9 +95,13 @@ export function apiFetch<T>(path: string, options: RequestOptions = {}): Promise
 async function request<T>(path: string, options: RequestOptions, allowCsrfRetry: boolean): Promise<T> {
   const method = options.method || 'GET';
   const headers: Record<string, string> = { Accept: 'application/json' };
-  let body: string | undefined;
+  let body: string | FormData | undefined;
 
-  if (options.body !== undefined) {
+  if (options.body instanceof FormData) {
+    // Deliberately no Content-Type: the browser has to set it itself so the
+    // multipart boundary matches the body it generates.
+    body = options.body;
+  } else if (options.body !== undefined) {
     headers['Content-Type'] = 'application/json';
     body = JSON.stringify(options.body);
   }
