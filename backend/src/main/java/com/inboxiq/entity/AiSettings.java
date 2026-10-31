@@ -40,7 +40,7 @@ public class AiSettings {
     private String model;
 
     /** Encrypted with TokenEncryptionService; null means "use the environment's key". */
-    @Column(name = "encrypted_api_key")
+    @Column(name = "encrypted_api_key", columnDefinition = "text")
     private String encryptedApiKey;
 
     @Column(name = "updated_by", length = 320)

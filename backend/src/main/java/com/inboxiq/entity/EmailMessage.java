@@ -39,36 +39,36 @@ public class EmailMessage {
     @JoinColumn(name = "mail_account_id", nullable = false)
     private MailAccount mailAccount;
 
-    @Column(name = "provider_message_id", nullable = false)
+    @Column(name = "provider_message_id", nullable = false, length = 128)
     private String providerMessageId;
 
-    @Column(name = "thread_id")
+    @Column(name = "thread_id", length = 128)
     private String threadId;
 
-    @Column(name = "sender")
+    @Column(name = "sender", length = 500)
     private String sender;
 
     /** Comma-joined "To" addresses (a message can have more than one recipient). */
-    @Column(name = "recipient")
+    @Column(name = "recipient", columnDefinition = "text")
     private String recipient;
 
-    @Column(name = "cc_recipient")
+    @Column(name = "cc_recipient", columnDefinition = "text")
     private String ccRecipient;
 
-    @Column(name = "subject")
+    @Column(name = "subject", length = 998)
     private String subject;
 
     @Column(name = "snippet", length = 500)
     private String snippet;
 
-    @Column(name = "body_text")
+    @Column(name = "body_text", columnDefinition = "text")
     private String bodyText;
 
-    @Column(name = "body_html")
+    @Column(name = "body_html", columnDefinition = "text")
     private String bodyHtml;
 
     /** Small JSON array of {filename, mimeType, sizeBytes} — metadata only, never file contents. */
-    @Column(name = "attachments_metadata")
+    @Column(name = "attachments_metadata", columnDefinition = "text")
     private String attachmentsMetadataJson;
 
     @Column(name = "has_attachments", nullable = false)
