@@ -451,7 +451,7 @@ export function EmailDetailPane({
           {showRisk && analysis && (
             <Alert tone={riskLevel === 'HIGH' ? 'danger' : 'warning'} title="This email may be worth a closer look">
               <p>
-                InboxIQ flags possibilities, not certainties. Check the sender and links before you click, pay, or share
+                Mailroom flags possibilities, not certainties. Check the sender and links before you click, pay, or share
                 anything.
               </p>
               {analysis.riskReasons.length > 0 && (

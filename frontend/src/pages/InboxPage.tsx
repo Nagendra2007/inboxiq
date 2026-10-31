@@ -66,7 +66,7 @@ const SYNC_FOLLOW_LIMIT = 30;
  */
 function gmailOutcome(applied: number, changedInGmail: number, didWhat: string): string {
   if (changedInGmail === applied) return `They were also ${didWhat}.`;
-  if (changedInGmail === 0) return 'Gmail no longer had them, so only InboxIQ’s copies changed.';
+  if (changedInGmail === 0) return 'Gmail no longer had them, so only Mailroom’s copies changed.';
   return `${changedInGmail} of them were ${didWhat}; Gmail no longer had the rest.`;
 }
 
@@ -134,7 +134,7 @@ function ConnectGmail() {
         </div>
         <h1 className="text-xl font-semibold text-white">Connect your Gmail</h1>
         <p className="mt-2 text-sm leading-relaxed text-white/50">
-          InboxIQ needs permission to read, send and trash Gmail messages on your behalf. Your Google password is never
+          Mailroom needs permission to read, send and trash Gmail messages on your behalf. Your Google password is never
           seen or stored, and you can disconnect at any time.
         </p>
         <ul className="mt-5 space-y-2.5">
@@ -1137,7 +1137,7 @@ export function InboxPage() {
               <EmptyState
                 icon={<InboxIcon className="h-5 w-5" />}
                 title="Nothing here yet"
-                description="Sync to pull in your latest Gmail messages. InboxIQ will summarize and prioritize each one."
+                description="Sync to pull in your latest Gmail messages. Mailroom will summarize and prioritize each one."
                 action={
                   <Button variant="primary" onClick={sync} loading={syncing} icon={<RefreshIcon className="h-4 w-4" />}>
                     Sync Gmail
@@ -1233,10 +1233,10 @@ export function InboxPage() {
           <>
             {pendingDelete ? (
               <>
-                “{pendingDelete.subject || '(no subject)'}” will be removed from InboxIQ and{' '}
+                “{pendingDelete.subject || '(no subject)'}” will be removed from Mailroom and{' '}
               </>
             ) : (
-              'This email will be removed from InboxIQ and '
+              'This email will be removed from Mailroom and '
             )}
             moved to Trash in your Gmail, where you can still restore it for 30 days.
           </>
@@ -1250,7 +1250,7 @@ export function InboxPage() {
         title={`Delete ${pluralize(checkedCount, 'email')}?`}
         description={`${
           checkedCount === 1 ? 'It' : 'They'
-        } will be removed from InboxIQ and moved to Trash in your Gmail, where you can still restore ${
+        } will be removed from Mailroom and moved to Trash in your Gmail, where you can still restore ${
           checkedCount === 1 ? 'it' : 'them'
         } for 30 days.`}
         confirmLabel={`Delete ${checkedCount}`}

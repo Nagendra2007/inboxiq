@@ -5,7 +5,7 @@
 @layer base {
   /* Theme palettes as RGB channels (see tailwind.config.js). Dark is the
      default; `html.theme-light` (set by src/lib/theme.ts, and before first
-     paint by public/assets/theme-init-v1.js) swaps in the light one. */
+     paint by public/assets/theme-init-v2.js) swaps in the light one. */
   :root {
     color-scheme: dark;
     --fg: 255 255 255;

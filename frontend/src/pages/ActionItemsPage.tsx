@@ -142,8 +142,8 @@ export function ActionItemsPage() {
           <h1 className="text-2xl font-semibold tracking-tight text-white">To-dos</h1>
           <p className="mt-1 text-sm text-white/45">
             {connected && !loading && !error
-              ? `${openCount} open${overdueCount ? ` · ${overdueCount} overdue` : ''} — tasks and deadlines InboxIQ found in your email.`
-              : 'Tasks and deadlines InboxIQ found in your email.'}
+              ? `${openCount} open${overdueCount ? ` · ${overdueCount} overdue` : ''} — tasks and deadlines Mailroom found in your email.`
+              : 'Tasks and deadlines Mailroom found in your email.'}
           </p>
         </header>
 
@@ -152,7 +152,7 @@ export function ActionItemsPage() {
             <EmptyState
               icon={<TodoIcon className="h-5 w-5" />}
               title="Connect Gmail to collect to-dos"
-              description="InboxIQ pulls action items and deadlines out of your emails automatically."
+              description="Mailroom pulls action items and deadlines out of your emails automatically."
               action={
                 <Link
                   to="/inbox"
@@ -217,7 +217,7 @@ export function ActionItemsPage() {
                   <EmptyState
                     icon={<CheckCircleIcon className="h-5 w-5 text-emerald-300" />}
                     title="You’re all caught up"
-                    description="New tasks and deadlines appear here as InboxIQ analyzes incoming email."
+                    description="New tasks and deadlines appear here as Mailroom analyzes incoming email."
                   />
                 </div>
               ) : (

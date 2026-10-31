@@ -1,0 +1,99 @@
+package com.mailroom.entity;
+
+import jakarta.persistence.*;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
+
+import java.time.Instant;
+import java.util.UUID;
+
+/**
+ * A linked mailbox (today: always Gmail) for a {@link User}.
+ *
+ * IMPORTANT: {@code encryptedAccessToken} / {@code encryptedRefreshToken}
+ * never hold a plaintext OAuth token. They are populated exclusively via
+ * {@code TokenEncryptionService#encrypt} in {@code MailAccountService}, and
+ * must be decrypted the same way before use. Never add a plain getter that
+ * bypasses this, and never log these fields (see {@code MailAccount#toString}).
+ */
+@Entity
+@Table(name = "mail_accounts")
+@Getter
+@Setter
+@NoArgsConstructor
+public class MailAccount {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
+    private UUID id;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private MailProvider provider = MailProvider.GOOGLE;
+
+    @Column(name = "provider_email", nullable = false, length = 320)
+    private String providerEmail;
+
+    @Column(name = "encrypted_access_token", columnDefinition = "text")
+    private String encryptedAccessToken;
+
+    @Column(name = "encrypted_refresh_token", columnDefinition = "text")
+    private String encryptedRefreshToken;
+
+    @Column(name = "token_expiry")
+    private Instant tokenExpiry;
+
+    /**
+     * Gmail's mailbox-wide history id: the incremental-sync checkpoint. Only
+     * advanced after a sync pass has applied every change up to it, so a pass
+     * that stops halfway is simply redone from the same point next time.
+     */
+    @Column(name = "last_history_id", length = 64)
+    private String lastHistoryId;
+
+    /** When the first (newest-N) sync finished. Null until then. */
+    @Column(name = "initial_sync_completed_at")
+    private Instant initialSyncCompletedAt;
+
+    /** Last successful sync pass. */
+    @Column(name = "last_sync_at")
+    private Instant lastSyncAt;
+
+    /** User-safe message from the last failed pass; null once a pass succeeds. */
+    @Column(name = "last_sync_error", length = 500)
+    private String lastSyncError;
+
+    /**
+     * Google rejected the stored refresh token (revoked in the Google
+     * account, or expired). The Mailroom session is unaffected; the user just
+     * has to reconnect Gmail. Cleared when a new refresh token arrives.
+     */
+    @Column(name = "reauth_required", nullable = false)
+    private boolean reauthRequired = false;
+
+    @Column(name = "active", nullable = false)
+    private boolean active = true;
+
+    @CreationTimestamp
+    @Column(name = "created_at", updatable = false)
+    private Instant createdAt;
+
+    @UpdateTimestamp
+    @Column(name = "updated_at")
+    private Instant updatedAt;
+
+    @Override
+    public String toString() {
+        // Deliberately excludes both token fields, even encrypted, from
+        // logs/toString to keep them out of stray log.debug(account) calls.
+        return "MailAccount{id=%s, provider=%s, providerEmail=%s, active=%s}"
+                .formatted(id, provider, providerEmail, active);
+    }
+}

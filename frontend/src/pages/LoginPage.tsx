@@ -19,8 +19,8 @@ import {
 // Codes the backend's OAuth2 success/failure handlers redirect back with.
 const ERROR_MESSAGES: Record<string, string> = {
   google_oauth_failed: 'Google sign-in didn’t complete. If you cancelled on the Google screen, just try again.',
-  no_email: 'Your Google account didn’t share an email address, so InboxIQ can’t connect it.',
-  no_authorized_client: 'Google didn’t return the permissions InboxIQ needs. Please try again and approve access.',
+  no_email: 'Your Google account didn’t share an email address, so Mailroom can’t connect it.',
+  no_authorized_client: 'Google didn’t return the permissions Mailroom needs. Please try again and approve access.',
   unexpected_auth_type: 'Something went wrong finishing sign-in. Please try again.',
 };
 
@@ -110,7 +110,7 @@ export function LoginPage() {
             Your inbox, <span className="text-accent-400">triaged</span> before you open it.
           </h1>
           <p className="mt-4 max-w-md text-[15px] leading-relaxed text-white/50">
-            InboxIQ reads your Gmail so you don’t have to — summaries, priorities, safety signals and to-dos, with you in
+            Mailroom reads your Gmail so you don’t have to — summaries, priorities, safety signals and to-dos, with you in
             control of every send.
           </p>
           <ul className="mt-8 grid max-w-xl gap-5 sm:grid-cols-2">
@@ -135,7 +135,7 @@ export function LoginPage() {
         <div className="order-1 flex flex-col items-center lg:order-2">
           <Logo className="mb-8 lg:hidden" />
           <div className="card w-full max-w-sm p-7 shadow-elevated animate-scale-in sm:p-8">
-            <h2 className="text-xl font-semibold text-white">Sign in to InboxIQ</h2>
+            <h2 className="text-xl font-semibold text-white">Sign in to Mailroom</h2>
             <p className="mt-1.5 text-sm leading-relaxed text-white/50">
               Use the Google account whose Gmail you want to manage.
             </p>
@@ -181,7 +181,7 @@ export function LoginPage() {
             </div>
           </div>
           <p className="mt-6 max-w-sm text-center text-xs leading-relaxed text-white/30">
-            InboxIQ requests Gmail read, send and trash access. AI flags possibilities, not certainties — always use your
+            Mailroom requests Gmail read, send and trash access. AI flags possibilities, not certainties — always use your
             judgment.
           </p>
           <p className="mt-3 text-center text-xs text-white/30">Built by Team Syntrix</p>

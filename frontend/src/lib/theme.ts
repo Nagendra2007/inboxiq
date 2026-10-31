@@ -2,14 +2,14 @@
  * Light/dark theme. Purely visual: the palette lives in CSS variables
  * (src/index.css) and `html.theme-light` switches it. The choice is a
  * per-browser display preference kept in localStorage (nothing sensitive);
- * dark stays the default. public/assets/theme-init-v1.js applies a saved
+ * dark stays the default. public/assets/theme-init-v2.js applies a saved
  * light theme before the first paint using the same key and colors.
  */
 export type Theme = 'dark' | 'light';
 
-export const THEME_STORAGE_KEY = 'inboxiq-theme';
+export const THEME_STORAGE_KEY = 'mailroom-theme';
 /** Fired on window whenever the theme changes in this tab. */
-export const THEME_CHANGE_EVENT = 'inboxiq:theme';
+export const THEME_CHANGE_EVENT = 'mailroom:theme';
 
 // Browser UI (mobile address bar) colors: each theme's page background.
 const THEME_COLOR: Record<Theme, string> = { dark: '#08090e', light: '#f4f5fa' };

@@ -9,7 +9,7 @@ import { prefetchInbox } from './api/prefetch';
 import { INBOX_PAGE_SIZE } from './lib/constants';
 import './index.css';
 
-// Normally already applied before first paint by /assets/theme-init-v1.js;
+// Normally already applied before first paint by /assets/theme-init-v2.js;
 // this covers the case where that script didn't run.
 applyTheme(storedTheme());
 

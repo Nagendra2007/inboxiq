@@ -3,6 +3,10 @@
 # `sync: false` are prompted for when you create the Blueprint in Render.
 services:
   - type: web
+    # Deliberately still "inboxiq": this has to keep matching the service that
+    # is already live at inboxiq-g72a.onrender.com. Renaming it here makes
+    # Render stand up a SECOND service on a new URL, which would break the
+    # Google OAuth redirect URI, the keep-warm ping and every saved session.
     name: inboxiq
     runtime: docker
     dockerfilePath: ./Dockerfile

@@ -51,7 +51,7 @@ function Section({
 const PERMISSIONS = [
   { icon: EyeIcon, title: 'Read your email', detail: 'To summarize, prioritize and search your inbox.' },
   { icon: SendIcon, title: 'Send email', detail: 'Only replies and messages you explicitly confirm.' },
-  { icon: TrashIcon, title: 'Move email to Trash', detail: 'When you delete in InboxIQ. Restorable in Gmail for 30 days.' },
+  { icon: TrashIcon, title: 'Move email to Trash', detail: 'When you delete in Mailroom. Restorable in Gmail for 30 days.' },
 ];
 
 export function SettingsPage() {
@@ -98,7 +98,7 @@ export function SettingsPage() {
       await refresh();
       refreshStats();
       setConfirm(null);
-      toast.success('All InboxIQ data deleted', 'Your emails, analyses, to-dos and drafts are gone for good.');
+      toast.success('All Mailroom data deleted', 'Your emails, analyses, to-dos and drafts are gone for good.');
     } catch (err) {
       toast.error('Could not delete your data', errorMessage(err, 'Please try again.'));
     } finally {
@@ -114,7 +114,7 @@ export function SettingsPage() {
           <p className="mt-1 text-sm text-white/45">Your account, Gmail connection and data.</p>
         </header>
 
-        <Section title="Account" description="You stay signed in on this browser, even after closing it, until you sign out or go 30 days without opening InboxIQ.">
+        <Section title="Account" description="You stay signed in on this browser, even after closing it, until you sign out or go 30 days without opening Mailroom.">
           <div className="flex flex-wrap items-center gap-4">
             <Avatar name={displayName} seed={user.email} size="lg" />
             <div className="min-w-0 flex-1">
@@ -129,7 +129,7 @@ export function SettingsPage() {
 
         <Section
           title="Gmail connection"
-          description="InboxIQ connects through Google OAuth. Your password is never seen or stored, and access tokens are encrypted at rest."
+          description="Mailroom connects through Google OAuth. Your password is never seen or stored, and access tokens are encrypted at rest."
         >
           <div className="flex flex-wrap items-center gap-3 rounded-xl border border-white/[0.06] bg-ink-900/50 px-4 py-3">
             <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-white">
@@ -204,7 +204,7 @@ export function SettingsPage() {
         <Section
           tone="danger"
           title="Delete all data"
-          description="Permanently deletes every email, AI analysis, to-do and reply draft InboxIQ has stored for you, and disconnects Gmail. Your actual Gmail mailbox is not touched. This can’t be undone."
+          description="Permanently deletes every email, AI analysis, to-do and reply draft Mailroom has stored for you, and disconnects Gmail. Your actual Gmail mailbox is not touched. This can’t be undone."
         >
           <Button variant="danger-ghost" onClick={() => setConfirm('delete')} icon={<DatabaseIcon className="h-4 w-4" />}>
             Delete all my data
@@ -214,7 +214,7 @@ export function SettingsPage() {
         <div className="space-y-1 pt-2 text-center text-xs text-white/30">
           <p className="flex items-center justify-center gap-1.5">
             <LockIcon className="h-3 w-3" />
-            InboxIQ v{__APP_VERSION__}
+            Mailroom v{__APP_VERSION__}
           </p>
           <p>Built by Team Syntrix</p>
         </div>
@@ -226,7 +226,7 @@ export function SettingsPage() {
         onConfirm={disconnect}
         loading={busy}
         title="Disconnect Gmail?"
-        description="InboxIQ will stop syncing and won’t be able to send or trash email. Emails already synced are kept, and you can reconnect any time."
+        description="Mailroom will stop syncing and won’t be able to send or trash email. Emails already synced are kept, and you can reconnect any time."
         confirmLabel="Disconnect"
       />
       <ConfirmDialog
@@ -234,7 +234,7 @@ export function SettingsPage() {
         onClose={() => !busy && setConfirm(null)}
         onConfirm={deleteAllData}
         loading={busy}
-        title="Delete all InboxIQ data?"
+        title="Delete all Mailroom data?"
         description="Every synced email, analysis, to-do and draft will be permanently erased. Your Gmail mailbox itself is not affected."
         confirmLabel="Delete everything"
         confirmText="DELETE"

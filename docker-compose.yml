@@ -1,4 +1,4 @@
-# Runs the complete InboxIQ stack — Postgres plus the single app image (API +
+# Runs the complete Mailroom stack — Postgres plus the single app image (API +
 # React UI, built by the root Dockerfile) — at http://localhost:8080.
 #
 #   cp backend/.env.example backend/.env   # fill in Google + OpenRouter keys
@@ -12,18 +12,18 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: inboxiq
-      POSTGRES_USER: ${DATABASE_USERNAME:-inboxiq}
-      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-inboxiq}
+      POSTGRES_DB: mailroom
+      POSTGRES_USER: ${DATABASE_USERNAME:-mailroom}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:-mailroom}
     ports:
       # Published on 5433 so it never collides with a PostgreSQL installed
       # directly on the machine (which usually owns 5432). The app container
       # still reaches it at db:5432 on the compose network.
       - "5433:5432"
     volumes:
-      - inboxiq_pg_data:/var/lib/postgresql/data
+      - mailroom_pg_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USERNAME:-inboxiq}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DATABASE_USERNAME:-mailroom}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -39,7 +39,7 @@ services:
       - ./backend/.env
     environment:
       # The UI and API share this one origin inside compose.
-      DATABASE_URL: jdbc:postgresql://db:5432/inboxiq
+      DATABASE_URL: jdbc:postgresql://db:5432/mailroom
       FRONTEND_URL: http://localhost:8080
       CORS_ALLOWED_ORIGINS: http://localhost:8080
       GOOGLE_REDIRECT_URI: http://localhost:8080/login/oauth2/code/google
@@ -47,4 +47,4 @@ services:
       - "8080:8080"
 
 volumes:
-  inboxiq_pg_data:
+  mailroom_pg_data:

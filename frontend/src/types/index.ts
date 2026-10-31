@@ -1,4 +1,4 @@
-// Mirrors the backend's com.inboxiq.dto.* records exactly. Keeping these in
+// Mirrors the backend's com.mailroom.dto.* records exactly. Keeping these in
 // one file makes it obvious when the frontend and backend contracts drift.
 
 export type Category =
@@ -15,7 +15,7 @@ export interface UserDto {
   name: string | null;
   /** A Gmail account is linked (not disconnected by the user). */
   gmailConnected: boolean;
-  /** Google rejected InboxIQ's Gmail access: still signed in, but Gmail must be reconnected. */
+  /** Google rejected Mailroom's Gmail access: still signed in, but Gmail must be reconnected. */
   gmailReauthRequired: boolean;
   /** May change app-wide settings (the AI provider). */
   admin: boolean;
