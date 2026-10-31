@@ -217,6 +217,15 @@ app:
     background-active-days: ${GMAIL_BACKGROUND_ACTIVE_DAYS:30}
     # Parallel message downloads within one sync pass.
     fetch-concurrency: 4
+    # Gmail push notifications. With a topic set, Gmail publishes to Pub/Sub
+    # the moment a message lands and Google posts it to /gmail/push, so new
+    # mail appears in a second or two instead of waiting for the poll above.
+    # Blank (the default) leaves the poll as the only mechanism.
+    #   projects/<gcp-project>/topics/<topic>
+    push-topic: ${GMAIL_PUSH_TOPIC:}
+    # Shared secret the push subscription carries in its query string. The
+    # endpoint refuses every request when this is blank.
+    push-token: ${GMAIL_PUSH_TOKEN:}
 
   sync:
     # Guard against re-analyzing an unchanged email. See EmailAnalysisService.

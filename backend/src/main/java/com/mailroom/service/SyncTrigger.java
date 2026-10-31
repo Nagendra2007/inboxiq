@@ -11,5 +11,7 @@ public enum SyncTrigger {
     /** Periodic check while the user is away, so mail keeps arriving with the app closed. */
     BACKGROUND,
     /** The Sync button. */
-    MANUAL
+    MANUAL,
+    /** Gmail told us, over Pub/Sub, that this mailbox changed. Nothing waited. */
+    PUSH
 }

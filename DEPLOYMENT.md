@@ -62,11 +62,19 @@ The dump includes `flyway_schema_history`, so Flyway sees every migration as app
 
 ## 3. The files on the instance
 
+Amazon Linux 2023 ships Docker but **not** the Compose plugin — `dnf install docker-compose-plugin` fails with "No match for argument", and because dnf aborts the whole transaction, asking for both in one command installs neither. So: Docker from dnf, Compose from Docker's own release.
+
 ```bash
-sudo dnf install -y docker docker-compose-plugin
+sudo dnf install -y docker
 sudo systemctl enable --now docker
+sudo mkdir -p /usr/libexec/docker/cli-plugins
+sudo curl -sSL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64 \
+  -o /usr/libexec/docker/cli-plugins/docker-compose
+sudo chmod +x /usr/libexec/docker/cli-plugins/docker-compose
 sudo usermod -aG docker ec2-user      # log out and back in
 ```
+
+The `usermod` must come **after** Docker installs: run it first and there is no `docker` group yet, so it fails and leaves `ec2-user` unable to reach the daemon. That breaks the deploy workflow rather than this step, because the workflow runs `docker compose` over SSH without sudo — so the symptom turns up later, somewhere else.
 
 ```bash
 sudo install -d -o ec2-user -g ec2-user /opt/mailroom
@@ -118,6 +126,33 @@ The rollout step is skipped while `EC2_HOST` is unset, so the workflow is safe t
 ## Using it
 
 Open `https://mail.example.com`, click **Continue with Google**, approve, and you land in your inbox while the newest 20 emails are fetched; summaries fill in as each is analyzed. You stay signed in — closing the browser or a redeploy doesn't sign you out, since sessions are stored in the database. While the app is open, new Gmail messages appear on their own within about 30 seconds.
+
+### New mail arriving instantly (Gmail push)
+
+Without this, the app notices new mail by asking Gmail every `GMAIL_POLL_SECONDS` whether anything changed, so a message shows up somewhere between zero and that many seconds after it lands. With it, Gmail publishes to a Pub/Sub topic the moment a message arrives, Google POSTs that to `/gmail/push`, and the sync starts in a second or two. The browser side is unchanged either way — the inbox has always updated over SSE without a refresh.
+
+Push is **off unless `GMAIL_PUSH_TOPIC` is set**, so nothing here is required.
+
+**In Google Cloud, once:**
+
+1. **Pub/Sub → Topics → Create topic**, id `mailroom-gmail`.
+2. On that topic, **grant `gmail-api-push@system.gserviceaccount.com` the role `Pub/Sub Publisher`**. This is the step everything else depends on: without it `users.watch()` fails, and the message it fails with talks about permissions on a topic rather than about Gmail.
+3. **Create a push subscription** on the topic, delivery type **Push**, endpoint:
+   `https://<your-domain>/gmail/push?token=<a long random string>`
+4. Enable the **Cloud Pub/Sub API** on the project if it isn't already.
+
+**Then in `app.env`:**
+
+```
+GMAIL_PUSH_TOPIC=projects/<gcp-project-id>/topics/mailroom-gmail
+GMAIL_PUSH_TOKEN=<the same random string from the endpoint URL>
+```
+
+Restart the app. The watch registers at the next sign-in, and `GmailWatchService` renews it hourly.
+
+**Two things worth knowing.** A `users.watch()` lasts seven days and then Gmail stops publishing **silently** — no error, no final notification — so a renewal that quietly fails looks exactly like everything working, only slower. That is why the expiry is stored per mailbox and renewed two days early, and why the poll stays switched on underneath as the net.
+
+And the endpoint authenticates with that shared token, not a session. It treats the notification body as a hint only: the address picks which mailbox to sync, and the sync itself runs from the `historyId` the database already holds, so a forged or replayed notification can cause an early sync and nothing more. Rotating the token means changing it in both places at once.
 
 ### Syncing while the app is closed
 

@@ -2,6 +2,7 @@ package com.mailroom.security;
 
 import com.mailroom.config.AppProperties;
 import com.mailroom.entity.MailAccount;
+import com.mailroom.service.GmailWatchService;
 import com.mailroom.service.MailAccountService;
 import com.mailroom.service.SyncCoordinator;
 import com.mailroom.service.SyncTrigger;
@@ -38,15 +39,18 @@ public class OAuth2LoginSuccessHandler extends SimpleUrlAuthenticationSuccessHan
     private final OAuth2AuthorizedClientRepository authorizedClientRepository;
     private final MailAccountService mailAccountService;
     private final SyncCoordinator syncCoordinator;
+    private final GmailWatchService gmailWatchService;
     private final AppProperties appProperties;
 
     public OAuth2LoginSuccessHandler(OAuth2AuthorizedClientRepository authorizedClientRepository,
                                       MailAccountService mailAccountService,
                                       SyncCoordinator syncCoordinator,
+                                      GmailWatchService gmailWatchService,
                                       AppProperties appProperties) {
         this.authorizedClientRepository = authorizedClientRepository;
         this.mailAccountService = mailAccountService;
         this.syncCoordinator = syncCoordinator;
+        this.gmailWatchService = gmailWatchService;
         this.appProperties = appProperties;
     }
 
@@ -104,6 +108,14 @@ public class OAuth2LoginSuccessHandler extends SimpleUrlAuthenticationSuccessHan
         // Fetch new mail in the background while the browser loads the app;
         // the inbox shows what's already stored and updates over SSE.
         syncCoordinator.requestSync(account.getId(), SyncTrigger.LOGIN);
+        // And make sure Gmail is still set up to tell us about the next one.
+        // Cheap unless a registration is actually due, and a failure here is
+        // only a return to polling, so it must never block signing in.
+        try {
+            gmailWatchService.ensureWatch(account.getId());
+        } catch (RuntimeException e) {
+            log.warn("Could not register the Gmail watch at sign-in: {}", e.getMessage());
+        }
 
         boolean gmailJustConnected = refreshToken != null && !refreshToken.isBlank();
         getRedirectStrategy().sendRedirect(request, response,
