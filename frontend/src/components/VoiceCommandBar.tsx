@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ComposeApi } from '../api/endpoints';
 import { errorMessage } from '../api/client';
 import { useAudioRecorder } from '../hooks/useAudioRecorder';
@@ -30,35 +30,7 @@ export function VoiceCommandBar({
   onFilled: (fields: { toAddress?: string; subject?: string; instruction: string }) => void;
   disabled?: boolean;
 }) {
-  // Preview text keyed by chunk index, because transcriptions of short
-  // clips come back out of order often enough to scramble a plain append.
-  const previewsRef = useRef(new Map<number, string>());
-  const [livePreview, setLivePreview] = useState('');
-  const pendingRef = useRef(0);
-
-  const onPreview = useCallback((clip: Blob, index: number) => {
-    // Two in flight is the most worth keeping: beyond that the preview is
-    // so far behind the speaker that it is no longer a preview, and every
-    // extra request is audio billed for text nobody will read.
-    if (pendingRef.current >= 2 || clip.size < 1200) return;
-    pendingRef.current += 1;
-    ComposeApi.transcribe(clip)
-      .then(({ text }) => {
-        if (!text.trim()) return;
-        previewsRef.current.set(index, text.trim());
-        setLivePreview(
-          [...previewsRef.current.entries()].sort((a, b) => a[0] - b[0]).map(([, t]) => t).join(' ')
-        );
-      })
-      .catch(() => {
-        /* A dropped preview costs nothing; the final take is the real one. */
-      })
-      .finally(() => {
-        pendingRef.current -= 1;
-      });
-  }, []);
-
-  const recorder = useAudioRecorder({ onPreview });
+  const recorder = useAudioRecorder();
   const [available, setAvailable] = useState<boolean | null>(null);
   const [stage, setStage] = useState<'idle' | 'transcribing' | 'interpreting'>('idle');
   const [heardText, setHeardText] = useState('');
@@ -80,25 +52,14 @@ export function VoiceCommandBar({
 
   if (!recorder.supported || available === false) return null;
 
-  function begin() {
-    previewsRef.current.clear();
-    pendingRef.current = 0;
-    setLivePreview('');
-    setHeardText('');
-    setResult(null);
-    setError('');
-    recorder.start();
-  }
-
   async function finish() {
     const clip = await recorder.stop();
-    previewsRef.current.clear();
-    pendingRef.current = 0;
     if (!clip || clip.size < 1200) {
       setError("That was too short to make anything of. Hold the button while you talk.");
       return;
     }
     setError('');
+    setHeardText('');
     setResult(null);
     setStage('transcribing');
     try {
@@ -140,7 +101,7 @@ export function VoiceCommandBar({
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
-          onClick={recording ? finish : begin}
+          onClick={recording ? finish : recorder.start}
           disabled={disabled || busy || recorder.starting}
           aria-pressed={recording}
           className={cn(
@@ -183,7 +144,7 @@ export function VoiceCommandBar({
                 {String(Math.floor(recorder.seconds / 60)).padStart(2, '0')}:
                 {String(recorder.seconds % 60).padStart(2, '0')}
               </span>
-              <span className="text-rose-200/50">{livePreview ? "" : "— press Done when you finish"}</span>
+              <span className="text-rose-200/50">— press Done when you finish</span>
             </span>
           ) : (
             <span className="block text-sm text-white/45">
@@ -215,18 +176,8 @@ export function VoiceCommandBar({
         )}
       </div>
 
-      {/* The running transcript while you talk. It lags a few seconds and
-          a chunk boundary can mangle a word, so it is shown faint: this is
-          progress, not the text anything gets built from. */}
-      {recording && livePreview && (
-        <div className="mt-3 rounded-lg bg-black/20 px-3 py-2 text-sm leading-relaxed text-white/55">
-          {livePreview}
-          <span className="ml-1 inline-block h-3 w-1.5 animate-pulse rounded-sm bg-rose-300/70 align-middle" aria-hidden="true" />
-        </div>
-      )}
-
-      {/* What it actually heard, kept visible so a wrong word is obvious
-          before the draft is generated from it. */}
+      {/* What it heard, kept visible so a wrong word is obvious before the
+          draft is generated from it. */}
       {heardText && !recording && (
         <div className="mt-3 rounded-lg bg-black/20 px-3 py-2 text-sm leading-relaxed text-white/80">{heardText}</div>
       )}
