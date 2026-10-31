@@ -42,7 +42,26 @@ function pickMimeType(): string | undefined {
   return undefined;
 }
 
-export function useAudioRecorder(maxSeconds = 60): AudioRecorderState {
+export interface AudioRecorderOptions {
+  maxSeconds?: number;
+  /**
+   * Called with a short, self-contained clip every {@link previewMs} while
+   * recording, for a running transcript. Each one is a complete recording
+   * with its own header rather than a slice of the main one, because an
+   * Opus-in-WebM fragment without the header cannot be decoded on its own —
+   * which is why this restarts a second recorder instead of using
+   * MediaRecorder's timeslice.
+   *
+   * These are for showing progress only. The clip returned by `stop` is the
+   * whole take, and it is what should be used for anything that matters:
+   * a chunk boundary lands mid-word often enough to mangle one.
+   */
+  onPreview?: (clip: Blob, index: number) => void;
+  previewMs?: number;
+}
+
+export function useAudioRecorder(options: AudioRecorderOptions = {}): AudioRecorderState {
+  const { maxSeconds = 60, onPreview, previewMs = 3500 } = options;
   const [supported] = useState(
     () => typeof window !== 'undefined' && typeof MediaRecorder !== 'undefined' && !!navigator.mediaDevices
   );
@@ -58,10 +77,25 @@ export function useAudioRecorder(maxSeconds = 60): AudioRecorderState {
   const audioRef = useRef<AudioContext | null>(null);
   const frameRef = useRef(0);
   const tickRef = useRef<number | undefined>(undefined);
+  // The second recorder, restarted every previewMs. Separate from the one
+  // above so the main take stays one continuous file.
+  const previewRef = useRef<MediaRecorder | null>(null);
+  const previewTimerRef = useRef<number | undefined>(undefined);
+  const previewIndexRef = useRef(0);
+  const onPreviewRef = useRef(onPreview);
+  onPreviewRef.current = onPreview;
 
   const teardown = useCallback(() => {
     cancelAnimationFrame(frameRef.current);
     window.clearInterval(tickRef.current);
+    window.clearTimeout(previewTimerRef.current);
+    const preview = previewRef.current;
+    previewRef.current = null;
+    if (preview && preview.state !== 'inactive') {
+      preview.ondataavailable = null;
+      preview.onstop = null;
+      preview.stop();
+    }
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
     audioRef.current?.close().catch(() => {});
@@ -126,6 +160,39 @@ export function useAudioRecorder(maxSeconds = 60): AudioRecorderState {
       };
       frameRef.current = requestAnimationFrame(draw);
 
+      // Preview loop: record a short take, hand it over, start another.
+      // Entirely optional — if a second MediaRecorder on this stream is
+      // refused, the main recording carries on and there is simply no
+      // running transcript.
+      if (onPreviewRef.current) {
+        previewIndexRef.current = 0;
+        const runPreview = () => {
+          if (!streamRef.current) return;
+          try {
+            const slice = new MediaRecorder(streamRef.current, { mimeType: pickMimeType() });
+            const parts: BlobPart[] = [];
+            slice.ondataavailable = (event) => {
+              if (event.data.size > 0) parts.push(event.data);
+            };
+            slice.onstop = () => {
+              if (parts.length) {
+                const index = previewIndexRef.current++;
+                onPreviewRef.current?.(new Blob(parts, { type: slice.mimeType || 'audio/webm' }), index);
+              }
+              if (previewRef.current) runPreview();
+            };
+            previewRef.current = slice;
+            slice.start();
+            previewTimerRef.current = window.setTimeout(() => {
+              if (slice.state !== 'inactive') slice.stop();
+            }, previewMs);
+          } catch {
+            previewRef.current = null;
+          }
+        };
+        runPreview();
+      }
+
       tickRef.current = window.setInterval(() => {
         setSeconds((s) => {
           if (s + 1 >= maxSeconds) recorderRef.current?.stop();
@@ -144,7 +211,7 @@ export function useAudioRecorder(maxSeconds = 60): AudioRecorderState {
             : 'The microphone could not be opened.'
       );
     }
-  }, [supported, maxSeconds]);
+  }, [supported, maxSeconds, previewMs]);
 
   const stop = useCallback((): Promise<Blob | null> => {
     const recorder = recorderRef.current;
