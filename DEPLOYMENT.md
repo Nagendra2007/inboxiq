@@ -9,7 +9,7 @@ Mailroom ships as **one Docker image** (the root `Dockerfile`): the React app is
 | TLS | **Caddy** + Let's Encrypt | Certificates issued and renewed with no cron job and no config. |
 | Images | **GHCR**, built by GitHub Actions | Free for public repositories, built natively on x86. |
 
-Everything goes in **`ap-south-1` (Mumbai)**. Co-locating the database with the app is worth more than any instance size.
+Everything goes in one region, together: **`ap-southeast-2` (Sydney)**. Which region matters less than the fact that the app and the database share it — co-location turns every query into a round trip of about a millisecond, and that is worth more than any instance size.
 
 ## Why one origin (and not Vercel + an API host)
 
