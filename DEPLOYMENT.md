@@ -4,10 +4,10 @@ Mailroom ships as **one Docker image** (the root `Dockerfile`): the React app is
 
 | Piece | Service | Why |
 |---|---|---|
-| App (UI + API) | **EC2** `t4g.small`, Docker, Caddy in front | Always on, no cold start, and no proxy timeout on the live-update stream. ~$12/month. |
+| App (UI + API) | **EC2** `t3.small`, Docker, Caddy in front | Always on, no cold start, and no proxy timeout on the live-update stream. ~$15/month. |
 | Database | **RDS** `db.t4g.micro`, private | Same VPC and region as the app, so a query is a round trip of about a millisecond. 7-day automated backups. |
 | TLS | **Caddy** + Let's Encrypt | Certificates issued and renewed with no cron job and no config. |
-| Images | **GHCR**, built by GitHub Actions | Free for public repositories, and arm64 is built natively. |
+| Images | **GHCR**, built by GitHub Actions | Free for public repositories, built natively on x86. |
 
 Everything goes in **`ap-south-1` (Mumbai)**. Co-locating the database with the app is worth more than any instance size.
 
@@ -37,7 +37,7 @@ Create the security groups **first**, so the instance and the database can refer
 
 That UDP rule is what enables HTTP/3. Caddy serves it by default and QUIC holds up better than TCP on a patchy mobile connection, but without the rule the browser quietly falls back to HTTP/2 and nothing says so. Referencing the app's *group* in the database rule means it keeps working when the instance changes address.
 
-**EC2:** `t4g.small`, Amazon Linux 2023 (**arm64**, not x86), 20 GB gp3, security group `mailroom-app`. Create a key pair and keep the `.pem`.
+**EC2:** `t3.small`, Amazon Linux 2023 (**64-bit x86**), 20 GB gp3, security group `mailroom-app`. Create a key pair and keep the `.pem`.
 
 **RDS:** PostgreSQL, `db.t4g.micro`, 20 GB gp3 with storage autoscaling, **Single-AZ**, security group `mailroom-db`, **Public access: No**. Take the latest major version — starting empty, there is nothing to match.
 
@@ -102,7 +102,7 @@ Testing-mode limit: Google expires refresh tokens for Gmail scopes after **7 day
 
 ## 6. Automatic deploys
 
-[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) builds the image on an arm64 runner, pushes it to GHCR and restarts the container over SSH. Set these under **Settings → Secrets and variables → Actions**:
+[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) builds the image, pushes it to GHCR and restarts the container over SSH. Set these under **Settings → Secrets and variables → Actions**:
 
 | | Name | Value |
 |---|---|---|
@@ -152,7 +152,7 @@ Keys saved here are encrypted with `TOKEN_ENCRYPTION_KEY` and never sent back to
 | Everyone has to reconnect Gmail after a migration | `TOKEN_ENCRYPTION_KEY` changed, so the stored refresh tokens can't be decrypted. |
 | AI summaries never appear, or "out of credits" / "rejected the API key" | Open **Settings → AI provider → Test connection** — it shows the provider's own explanation. Failed analyses are retried a couple of times; **Re-analyze** on an email retries it now. |
 | New mail doesn't appear by itself (the dot beside **Inbox** stays amber) | The live connection (`/api/events`) is being buffered or blocked. Check `flush_interval -1` is still in the Caddyfile — without it the stream never reaches the browser. |
-| Out-of-memory restarts | Lower `mem_limit` in `deploy/docker-compose.yml`, or move to `t4g.medium`. The JVM sizes its heap from the container limit, so it must have one. |
+| Out-of-memory restarts | Lower `mem_limit` in `deploy/docker-compose.yml`, or move to `t3.medium`. The JVM sizes its heap from the container limit, so it must have one. |
 
 ## Other hosts
 
