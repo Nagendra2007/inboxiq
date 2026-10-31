@@ -1,12 +1,12 @@
 # syntax=docker/dockerfile:1
 #
 # Production image: the React app is built and bundled into the Spring Boot
-# jar, so the whole of InboxIQ is served from ONE origin. That keeps the
+# jar, so the whole of Mailroom is served from ONE origin. That keeps the
 # session and CSRF cookies first-party — no CORS, no SameSite=None, and no
 # breakage in browsers that block third-party cookies (Safari, Firefox).
 #
-#   docker build -t inboxiq .
-#   docker run -p 8080:8080 --env-file backend/.env inboxiq
+#   docker build -t mailroom .
+#   docker run -p 8080:8080 --env-file backend/.env mailroom
 
 # ---- 1. Frontend -----------------------------------------------------------
 FROM node:22-alpine AS frontend
@@ -28,9 +28,9 @@ RUN mvn -q -B clean package -DskipTests
 # ---- 3. Runtime ---------------------------------------------------------------
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
-RUN addgroup -S inboxiq && adduser -S inboxiq -G inboxiq
+RUN addgroup -S mailroom && adduser -S mailroom -G mailroom
 COPY --from=backend /app/backend/target/*.jar app.jar
-USER inboxiq
+USER mailroom
 
 # Sized for small instances (e.g. 512 MB free tiers): cap the heap relative
 # to the container limit, use the low-overhead serial GC, and exit cleanly on

@@ -14,7 +14,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error('InboxIQ crashed while rendering', error, info.componentStack);
+    console.error('Mailroom crashed while rendering', error, info.componentStack);
   }
 
   render() {
@@ -25,7 +25,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
         <div>
           <h1 className="text-lg font-semibold text-white">Something went wrong</h1>
           <p className="mt-1.5 max-w-sm text-sm text-white/50">
-            InboxIQ hit an unexpected error. Your data is safe — reloading the page usually fixes this.
+            Mailroom hit an unexpected error. Your data is safe — reloading the page usually fixes this.
           </p>
         </div>
         <button
@@ -33,7 +33,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
           onClick={() => window.location.reload()}
           className="h-10 rounded-xl bg-accent-500 px-5 text-sm font-semibold text-on-accent transition hover:bg-accent-400"
         >
-          Reload InboxIQ
+          Reload Mailroom
         </button>
       </div>
     );

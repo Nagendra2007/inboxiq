@@ -11,11 +11,11 @@
         <relativePath/>
     </parent>
 
-    <groupId>com.inboxiq</groupId>
-    <artifactId>inboxiq-backend</artifactId>
+    <groupId>com.mailroom</groupId>
+    <artifactId>mailroom-backend</artifactId>
     <version>0.1.0</version>
-    <name>inboxiq-backend</name>
-    <description>InboxIQ - AI-powered email intelligence and writing assistant (backend)</description>
+    <name>mailroom-backend</name>
+    <description>Mailroom - AI-powered email intelligence and writing assistant (backend)</description>
 
     <properties>
         <!-- Bytecode target. 17 is the floor Spring Boot 3 supports, so the

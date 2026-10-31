@@ -1,0 +1,17 @@
+package com.mailroom.dto;
+
+import java.time.Instant;
+import java.util.UUID;
+
+/** Lightweight view used for inbox list rendering — no body content. */
+public record EmailSummaryDto(
+        UUID id,
+        String sender,
+        String subject,
+        String snippet,
+        Instant receivedAt,
+        boolean read,
+        boolean hasAttachments,
+        boolean archived,
+        EmailAnalysisDto analysis // may be null if analysis has not run yet
+) {}

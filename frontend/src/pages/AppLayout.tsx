@@ -17,7 +17,7 @@ import { AlertTriangleIcon, GoogleIcon, RefreshIcon, ServerIcon } from '../compo
 
 function SplashScreen() {
   return (
-    <div className="flex h-dvh flex-col items-center justify-center gap-5 bg-ink-900" role="status" aria-label="Loading InboxIQ">
+    <div className="flex h-dvh flex-col items-center justify-center gap-5 bg-ink-900" role="status" aria-label="Loading Mailroom">
       <LogoMark className="h-12 w-12 animate-pulse" />
       <Spinner className="h-4 w-4 text-white/30" />
     </div>
@@ -49,7 +49,7 @@ function ServerUnreachable({ onRetry }: { onRetry: () => Promise<void> }) {
         <div className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-2xl border border-white/[0.08] bg-white/[0.03] text-white/50">
           <ServerIcon className="h-5 w-5" />
         </div>
-        <h1 className="text-lg font-semibold text-white">Waking up InboxIQ…</h1>
+        <h1 className="text-lg font-semibold text-white">Waking up Mailroom…</h1>
         <p className="mt-2 text-sm leading-relaxed text-white/50">
           We can't reach the server yet. If it's been idle for a while it may take up to a minute to start — we'll keep
           trying automatically.
@@ -69,7 +69,7 @@ function ServerUnreachable({ onRetry }: { onRetry: () => Promise<void> }) {
 }
 
 /**
- * Google stopped accepting InboxIQ's Gmail access (revoked in the Google
+ * Google stopped accepting Mailroom's Gmail access (revoked in the Google
  * account, or expired). The user is still signed in and their stored mail
  * is all here; new mail just can't be fetched until they reconnect.
  */

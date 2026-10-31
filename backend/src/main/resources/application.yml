@@ -1,6 +1,6 @@
 spring:
   application:
-    name: inboxiq-backend
+    name: mailroom-backend
 
   # Local runs (`mvn spring-boot:run` from backend/, or an IDE run from the
   # repo root) pick up backend/.env automatically — no need to export each
@@ -12,9 +12,9 @@ spring:
       - optional:file:backend/.env[.properties]
 
   datasource:
-    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/inboxiq}
-    username: ${DATABASE_USERNAME:inboxiq}
-    password: ${DATABASE_PASSWORD:inboxiq}
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/mailroom}
+    username: ${DATABASE_USERNAME:mailroom}
+    password: ${DATABASE_PASSWORD:mailroom}
     hikari:
       maximum-pool-size: 10
 
@@ -74,9 +74,9 @@ spring:
               # Least-privilege Gmail scopes:
               #  - gmail.readonly: list/read messages & threads (inbox ingestion, analysis)
               #  - gmail.send: send a reply after explicit user confirmation
-              #  - gmail.modify: lets InboxIQ's delete button move the message to
+              #  - gmail.modify: lets Mailroom's delete button move the message to
               #    Trash in the user's real Gmail too (reversible — same as
-              #    Gmail's own trash icon), not just remove InboxIQ's local copy.
+              #    Gmail's own trash icon), not just remove Mailroom's local copy.
               # Deliberately NOT using the full "mail.google.com" scope, which
               # would also grant permanent, un-trash-able deletion and settings
               # access we never need. See README "Gmail Permissions" section.
@@ -125,7 +125,7 @@ server:
   servlet:
     session:
       cookie:
-        name: INBOXIQ_SESSION
+        name: MAILROOM_SESSION
         http-only: true
         # "lax" is correct whenever the SPA and API share one origin — local
         # dev (Vite proxy) and the single-service production image alike. Set
@@ -137,7 +137,7 @@ server:
         secure: ${COOKIE_SECURE:false}
         # A persistent cookie, so closing the browser doesn't sign you out.
         # Renewed on each app load (AuthController#me), so it only lapses
-        # after this long without opening InboxIQ.
+        # after this long without opening Mailroom.
         max-age: ${SESSION_DAYS:30}d
       # Idle lifetime of the server-side session (stored in Postgres).
       timeout: ${SESSION_DAYS:30}d
@@ -155,7 +155,7 @@ app:
     token-encryption-key: ${TOKEN_ENCRYPTION_KEY:}
     # Comma-separated origins allowed to call the API with credentials.
     cors-allowed-origins: ${CORS_ALLOWED_ORIGINS:${RENDER_EXTERNAL_URL:http://localhost:5173}}
-    session-cookie-name: INBOXIQ_SESSION
+    session-cookie-name: MAILROOM_SESSION
     # Kept in lockstep with server.servlet.session.cookie.* above — the CSRF
     # cookie needs the exact same SameSite/Secure treatment as the session
     # cookie, or one of them silently stops reaching the backend cross-domain.
@@ -201,7 +201,7 @@ app:
     # Safety valve for one incremental pass (e.g. after a long absence): keep
     # the newest N new messages.
     max-new-messages-per-sync: ${MAX_NEW_MESSAGES_PER_SYNC:100}
-    # How often mailboxes of users who have InboxIQ open are checked for new
+    # How often mailboxes of users who have Mailroom open are checked for new
     # mail. Each check is one cheap history call.
     poll-interval-seconds: ${GMAIL_POLL_SECONDS:30}
     # How often the mailboxes of users who are AWAY are checked, so new mail
@@ -238,7 +238,7 @@ management:
 logging:
   level:
     root: INFO
-    com.inboxiq: INFO
+    com.mailroom: INFO
     org.springframework.security: WARN
   pattern:
     # Deliberately does not include request bodies/headers. Application code

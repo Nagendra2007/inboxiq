@@ -44,7 +44,7 @@ export function ReplyComposer({
 
   const generate = async () => {
     if (!instruction.trim()) {
-      setError('Tell InboxIQ what you’d like the reply to say.');
+      setError('Tell Mailroom what you’d like the reply to say.');
       return;
     }
     setGenerating(true);

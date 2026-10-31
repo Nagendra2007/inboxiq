@@ -66,7 +66,7 @@ export const EmailApi = {
   delete: (id: string) => apiFetch<void>(`/api/emails/${id}`, { method: 'DELETE' }),
 
   // Bulk actions reach Gmail for each email in turn, so allow them time.
-  /** Trashes a selection in Gmail and removes InboxIQ's copies. */
+  /** Trashes a selection in Gmail and removes Mailroom's copies. */
   bulkDelete: (ids: string[]) =>
     apiFetch<BulkActionResultDto>('/api/emails/bulk-delete', {
       method: 'POST',

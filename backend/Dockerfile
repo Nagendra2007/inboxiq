@@ -13,9 +13,9 @@ RUN mvn -q -B clean package -DskipTests
 
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
-RUN addgroup -S inboxiq && adduser -S inboxiq -G inboxiq
+RUN addgroup -S mailroom && adduser -S mailroom -G mailroom
 COPY --from=build /build/target/*.jar app.jar
-USER inboxiq
+USER mailroom
 ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=70 -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError"
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]

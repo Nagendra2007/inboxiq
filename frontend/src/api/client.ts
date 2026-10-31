@@ -13,7 +13,7 @@ const DEFAULT_TIMEOUT_MS = 30_000;
 export const LONG_TIMEOUT_MS = 120_000;
 
 /** Fired whenever the backend answers 401, so the app can return to sign-in. */
-export const UNAUTHORIZED_EVENT = 'inboxiq:unauthorized';
+export const UNAUTHORIZED_EVENT = 'mailroom:unauthorized';
 
 export class ApiError extends Error {
   status: number;
@@ -77,7 +77,7 @@ function fallbackMessage(status: number): string {
   if (status === 404) return 'That item no longer exists.';
   if (status === 429) return "You're going a little fast. Please wait a moment and try again.";
   if (status === 502 || status === 503 || status === 504) {
-    return 'InboxIQ is starting up or briefly unavailable. Please try again in a moment.';
+    return 'Mailroom is starting up or briefly unavailable. Please try again in a moment.';
   }
   return 'Something went wrong. Please try again.';
 }
@@ -130,7 +130,7 @@ async function request<T>(path: string, options: RequestOptions, allowCsrfRetry:
       error: timedOut ? 'TIMEOUT' : 'NETWORK_ERROR',
       message: timedOut
         ? 'The server took too long to respond. Please try again.'
-        : "Can't reach InboxIQ right now. Check your connection and try again.",
+        : "Can't reach Mailroom right now. Check your connection and try again.",
     });
   } finally {
     window.clearTimeout(timer);
@@ -185,7 +185,7 @@ export function startGoogleLogin() {
 
 /**
  * Connect or reconnect Gmail: the same Google flow, but through Google's
- * consent screen, which is what issues InboxIQ a new long-lived Gmail grant.
+ * consent screen, which is what issues Mailroom a new long-lived Gmail grant.
  */
 export function startGmailConnect() {
   window.location.href = `${API_BASE}/oauth2/authorization/google?consent=1`;

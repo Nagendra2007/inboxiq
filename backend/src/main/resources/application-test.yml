@@ -1,6 +1,6 @@
 spring:
   datasource:
-    url: jdbc:h2:mem:inboxiq;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    url: jdbc:h2:mem:mailroom;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
     username: sa
     password: sa
     driver-class-name: org.h2.Driver
@@ -26,8 +26,8 @@ app:
     # Scheduled background checks would race with tests that drive sync by hand.
     background-poll-minutes: 0
   security:
-    # Test-only key: Base64 of the 32 ASCII bytes "inboxiq-test-key-not-for-prod-32".
-    token-encryption-key: aW5ib3hpcS10ZXN0LWtleS1ub3QtZm9yLXByb2QtMzI=
+    # Test-only key: Base64 of the 32 ASCII bytes "mailroom-test-key-not-for-prod32".
+    token-encryption-key: bWFpbHJvb20tdGVzdC1rZXktbm90LWZvci1wcm9kMzI=
   ai:
     api-key: test-key
     model: test/model

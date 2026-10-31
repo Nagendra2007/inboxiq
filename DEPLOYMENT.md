@@ -1,6 +1,6 @@
-# Deploying InboxIQ
+# Deploying Mailroom
 
-InboxIQ ships as **one Docker image** (the root `Dockerfile`): the React app is built and bundled into the Spring Boot jar, so the UI and the API are served from the same URL. Recommended free-tier stack:
+Mailroom ships as **one Docker image** (the root `Dockerfile`): the React app is built and bundled into the Spring Boot jar, so the UI and the API are served from the same URL. Recommended free-tier stack:
 
 | Piece | Service | Why |
 |---|---|---|
@@ -26,7 +26,7 @@ Create an empty **private** repository on GitHub (no README), then from the repo
 git init -b main
 git add .
 git commit -m "Initial commit"
-git remote add origin https://github.com/<your-username>/inboxiq.git
+git remote add origin https://github.com/<your-username>/mailroom.git
 git push -u origin main
 ```
 
@@ -72,9 +72,9 @@ It reads the Neon string from the clipboard (or asks for it, with hidden input).
 ## 4. Deploy on Render
 
 1. Sign up at [render.com](https://render.com) with your GitHub account.
-2. **New → Web Service** → choose the `inboxiq` repository.
+2. **New → Web Service** → choose the `mailroom` repository.
 3. Render detects the `Dockerfile`. Set:
-   - **Name:** anything, e.g. `inboxiq` — your URL becomes `https://<name>.onrender.com` (Render adds a suffix if the name is taken)
+   - **Name:** anything, e.g. `mailroom` — your URL becomes `https://<name>.onrender.com` (Render adds a suffix if the name is taken)
    - **Instance type:** Free
    - **Environment Variables:** click **Add from .env** and paste (your clipboard from step 3)
    - **Advanced → Health Check Path:** `/actuator/health`
@@ -90,15 +90,15 @@ In Google Cloud Console → **APIs & Services**:
 2. **OAuth consent screen → Test users:** make sure your Gmail address is listed. While the app is in Testing mode only listed accounts can sign in.
 3. Scopes on the consent screen should include `gmail.readonly`, `gmail.send` and `gmail.modify` (plus `openid`, `email`, `profile`).
 
-Testing-mode limit: Google expires refresh tokens for Gmail scopes after **7 days**. When that happens InboxIQ keeps you signed in and shows a **Reconnect Gmail** banner — click it and approve. Only a published (verified) app avoids this.
+Testing-mode limit: Google expires refresh tokens for Gmail scopes after **7 days**. When that happens Mailroom keeps you signed in and shows a **Reconnect Gmail** banner — click it and approve. Only a published (verified) app avoids this.
 
 ## 6. Use it
 
-Open `https://<your-render-url>`, click **Continue with Google**, approve, and you land in your inbox while the newest 20 emails are fetched; summaries fill in as each is analyzed. You stay signed in — closing the browser or a redeploy doesn't sign you out (sessions are stored in the database). While the app is open, new Gmail messages appear on their own within about 30 seconds. After 15 idle minutes the free instance sleeps; the next visit shows "Waking up InboxIQ…" and retries by itself, then catches up on only the mail that arrived meanwhile.
+Open `https://<your-render-url>`, click **Continue with Google**, approve, and you land in your inbox while the newest 20 emails are fetched; summaries fill in as each is analyzed. You stay signed in — closing the browser or a redeploy doesn't sign you out (sessions are stored in the database). While the app is open, new Gmail messages appear on their own within about 30 seconds. After 15 idle minutes the free instance sleeps; the next visit shows "Waking up Mailroom…" and retries by itself, then catches up on only the mail that arrived meanwhile.
 
 ### Syncing while the app is closed
 
-InboxIQ also checks the mailboxes of users who are *away* every `GMAIL_BACKGROUND_POLL_MINUTES` (5 by default), so mail is fetched and analyzed as it arrives and the next sign-in has nothing left to do but read it out of the database. Checks stop for a mailbox nobody has opened in `GMAIL_BACKGROUND_ACTIVE_DAYS` (30), so an abandoned account stops spending Gmail quota and AI credits; signing in revives it.
+Mailroom also checks the mailboxes of users who are *away* every `GMAIL_BACKGROUND_POLL_MINUTES` (5 by default), so mail is fetched and analyzed as it arrives and the next sign-in has nothing left to do but read it out of the database. Checks stop for a mailbox nobody has opened in `GMAIL_BACKGROUND_ACTIVE_DAYS` (30), so an abandoned account stops spending Gmail quota and AI credits; signing in revives it.
 
 **This needs a host that keeps the app running.** Render's free plan stops the instance after 15 minutes without a *visitor* — work the app does for itself doesn't count — so nothing can be synced while it's asleep, and the first visit afterwards waits a minute or more for it to start. If you want mail to keep arriving with the app closed, pick one of:
 
@@ -142,8 +142,8 @@ Keys saved here are encrypted with `TOKEN_ENCRYPTION_KEY` and never sent back to
 The image runs anywhere Docker does (Railway, Fly.io, a VPS, Kubernetes). It honours the platform's `PORT` variable and trusts `X-Forwarded-*` headers from private-network proxies, so it works behind a TLS-terminating load balancer:
 
 ```bash
-docker build -t inboxiq .
-docker run -p 8080:8080 --env-file .env.render -e FRONTEND_URL=https://your.domain -e CORS_ALLOWED_ORIGINS=https://your.domain -e GOOGLE_REDIRECT_URI=https://your.domain/login/oauth2/code/google inboxiq
+docker build -t mailroom .
+docker run -p 8080:8080 --env-file .env.render -e FRONTEND_URL=https://your.domain -e CORS_ALLOWED_ORIGINS=https://your.domain -e GOOGLE_REDIRECT_URI=https://your.domain/login/oauth2/code/google mailroom
 ```
 
 Outside Render, set those three URL variables to your public URL explicitly.

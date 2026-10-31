@@ -1,6 +1,6 @@
-# InboxIQ
+# Mailroom
 
-InboxIQ is an AI-powered Gmail intelligence and writing assistant. It connects to your real Gmail account via Google OAuth 2.0, summarizes and prioritizes your inbox, flags emails that are *possibly* phishing or scams (never a certainty — always a signal for you to judge), extracts action items and deadlines, and helps you draft replies from a one-line instruction — with a mandatory human review-and-confirm step before anything is ever sent.
+Mailroom is an AI-powered Gmail intelligence and writing assistant. It connects to your real Gmail account via Google OAuth 2.0, summarizes and prioritizes your inbox, flags emails that are *possibly* phishing or scams (never a certainty — always a signal for you to judge), extracts action items and deadlines, and helps you draft replies from a one-line instruction — with a mandatory human review-and-confirm step before anything is ever sent.
 
 > **Status:** backend compiles and its unit tests pass on JDK 17+; the frontend type-checks and builds. Production ships as a single Docker image — see [DEPLOYMENT.md](DEPLOYMENT.md).
 
@@ -37,8 +37,8 @@ InboxIQ is an AI-powered Gmail intelligence and writing assistant. It connects t
 - **Category filtering & search**: Personal, Work, Education, Finance, Shopping, Delivery, Security, Social, Marketing, Newsletter, Suspicious, Other.
 - **AI reply composer**: type one line ("say yes, I can meet Thursday at 3pm"), get an editable draft, adjust it with Make shorter / Make formal / Make friendly / Regenerate, edit it by hand, and only then send — never automatic.
 - **Dashboard**: inbox totals, unread count, priority/risk breakdowns, open action items.
-- **Inbox actions that reach Gmail**: archive, mark read/unread and delete — one email or a whole selection. Each one changes the real mailbox first (INBOX label off, UNREAD label off, moved to Trash) and InboxIQ's copy second, and archiving keeps the email with everything derived from it.
-- **Privacy controls**: disconnect Gmail (revokes access, keeps data) or permanently delete all InboxIQ data for your account.
+- **Inbox actions that reach Gmail**: archive, mark read/unread and delete — one email or a whole selection. Each one changes the real mailbox first (INBOX label off, UNREAD label off, moved to Trash) and Mailroom's copy second, and archiving keeps the email with everything derived from it.
+- **Privacy controls**: disconnect Gmail (revokes access, keeps data) or permanently delete all Mailroom data for your account.
 
 ## Tech stack
 
@@ -174,9 +174,9 @@ See `backend/src/main/resources/db/migration/V1__init_schema.sql` for the exact 
 
 ## Security model
 
-- **No passwords, ever.** Authentication is 100% delegated to Google OAuth 2.0 (`authorization_code` + OIDC). InboxIQ never sees, requests, or stores a Gmail password.
+- **No passwords, ever.** Authentication is 100% delegated to Google OAuth 2.0 (`authorization_code` + OIDC). Mailroom never sees, requests, or stores a Gmail password.
 - **Encrypted tokens at rest.** OAuth access/refresh tokens are encrypted with AES-256-GCM (`TokenEncryptionService`) before being written to the database, keyed by `TOKEN_ENCRYPTION_KEY`. They are never logged (`MailAccount.toString()` deliberately excludes them).
-- **Least-privilege scopes.** `openid`, `email`, `profile`, `gmail.readonly`, `gmail.send`, and `gmail.modify` (only so deleting in InboxIQ moves the message to Gmail's Trash) — never the full-mailbox scope.
+- **Least-privilege scopes.** `openid`, `email`, `profile`, `gmail.readonly`, `gmail.send`, and `gmail.modify` (only so deleting in Mailroom moves the message to Gmail's Trash) — never the full-mailbox scope.
 - **Server-side sessions.** Signing in creates a session stored in Postgres (Spring Session JDBC) behind an HttpOnly + SameSite=Lax cookie that JavaScript never sees. The cookie is persistent (30 days, renewed on every visit), so closing the browser, a restart or a redeploy doesn't sign anyone out. Nothing auth-related is kept in `localStorage`. The UI and API are served from one origin, so both cookies are first-party.
 - **Sign-in is separate from Gmail access.** Signing in only proves who you are (Google's account chooser; no consent screen for returning users). Gmail access is a separate, revocable grant: its tokens live encrypted on the mail account and are refreshed server-side. If Google revokes it, you stay signed in and the app asks you to **Reconnect Gmail** (`/oauth2/authorization/google?consent=1`), which goes through Google's consent screen once to obtain a new grant.
 - **CSRF protection** via the double-submit cookie pattern (`XSRF-TOKEN` readable cookie + `X-XSRF-TOKEN` header), the pattern Spring Security's own docs recommend for a JSON SPA. The token is issued on the first request, so the very first write after sign-in succeeds.
@@ -195,7 +195,7 @@ See `backend/src/main/resources/db/migration/V1__init_schema.sql` for the exact 
 | `openid`, `email`, `profile` | Identify who signed in — nothing more. |
 | `gmail.readonly` | List/read messages and threads for inbox sync, search, and analysis. |
 | `gmail.send` | Send a reply — only ever after the user's own explicit confirmation. |
-| `gmail.modify` | Move a message to Trash when the user deletes it in InboxIQ (reversible in Gmail for 30 days). |
+| `gmail.modify` | Move a message to Trash when the user deletes it in Mailroom (reversible in Gmail for 30 days). |
 
 Deliberately **not requested**: `mail.google.com` (full account access, including permanent deletion, settings and filters). If a future feature needs more, request it as its own additional, justified scope — never widen access speculatively. Accounts connected before `gmail.modify` was added need to disconnect and reconnect before deletes reach Gmail.
 
@@ -306,7 +306,7 @@ npm run build   # type-checks (tsc -b) then produces dist/
 - **Live updates:** one Server-Sent Events connection for the whole app (`context/RealtimeContext.tsx`) delivers new mail, read/delete changes and finished analyses, each applied to just the affected email. If the stream is down, the inbox falls back to polling.
 - **Keyboard:** `C` compose, `/` search, `J`/`K` next/previous email, `X` select, `E` archive, `Esc` clear the selection or close the email, `?` shortcut sheet, `Ctrl+Enter` generate a draft.
 - **Scannable list:** rows sit under sticky day headings (Today, Yesterday, weekday, then coarser), and carry only the marks that change what you'd do before opening one — a red or amber rail for a flagged email, a reply arrow, a paperclip. The rest of the analysis stays in the reader.
-- **Acting on mail:** a row's avatar doubles as its checkbox, so any number of emails can be archived, marked read or deleted at once; on a phone, swiping a row left deletes one. Every action reaches the real Gmail first — trashed, archived (INBOX label off) or marked read — and only then changes InboxIQ's copy, so the two never drift apart.
+- **Acting on mail:** a row's avatar doubles as its checkbox, so any number of emails can be archived, marked read or deleted at once; on a phone, swiping a row left deletes one. Every action reaches the real Gmail first — trashed, archived (INBOX label off) or marked read — and only then changes Mailroom's copy, so the two never drift apart.
 - **Archiving:** out of the inbox, not destroyed. The email keeps its summary, to-dos and drafts and moves to the **Archived** list, which is also where mail archived in Gmail itself ends up; **Move back to the inbox** reverses it in both places.
 - **Opening an email is instant:** the reader paints from the row that was clicked — subject, sender, badges and the whole AI summary are already there — and fills in the recipients, to-dos and original message when its request lands, instead of showing a skeleton for a round trip.
 - **Light and dark themes:** dark by default; the **Light mode** switch (sidebar, Settings, sign-in page) is remembered per browser. The palette is CSS variables (`src/index.css`, `html.theme-light`), so components don't carry per-theme classes; `public/assets/theme-init-v1.js` applies a saved theme before first paint. The indigo accent is mid-dark enough to keep white lettering on both themes — every button state (hover/rest/active) clears 4.5:1 — which is why fills don't need a per-theme variant the way a pale accent would.
@@ -319,7 +319,7 @@ npm run build   # type-checks (tsc -b) then produces dist/
 | GET | `/api/auth/me` | Current user + Gmail connection status (connected / reconnect needed); renews the session cookie |
 | POST | `/api/auth/logout` | End the session |
 | POST | `/api/auth/disconnect` | Revoke Gmail access, keep data |
-| DELETE | `/api/auth/data` | Permanently delete all InboxIQ data |
+| DELETE | `/api/auth/data` | Permanently delete all Mailroom data |
 | POST | `/api/gmail/sync` | Start an incremental sync in the background (202; results arrive as events) |
 | GET | `/api/gmail/status` | Persisted sync state: last sync, first sync done, reconnect needed |
 | GET | `/api/events` | Server-Sent Events stream of the user's sync/email/analysis events |
@@ -368,13 +368,13 @@ npm run build   # type-checks (tsc -b) then produces dist/
 ## Project structure
 
 ```
-inboxiq/
+mailroom/
 ├── Dockerfile         Production image: builds the SPA into the Spring Boot jar (one origin)
 ├── docker-compose.yml Postgres + the app at http://localhost:8080
 ├── render.yaml        Render Blueprint for the production service
 ├── .github/workflows/ CI: frontend build, backend tests, Docker build
 ├── backend/           Spring Boot API (Java 17+)
-│   └── src/main/java/com/inboxiq/
+│   └── src/main/java/com/mailroom/
 │       ├── config/       AppProperties (typed app.* config)
 │       ├── security/     OAuth2, CSRF, token encryption, current-user resolution
 │       ├── gmail/        Gmail API client, message parsing, HTML sanitization
@@ -402,5 +402,5 @@ inboxiq/
 
 - **New mail is detected by polling** Gmail's history (every 30 s with the app open, every 5 min without) rather than Gmail push notifications. Push via Cloud Pub/Sub (`users.watch`) would cut the delay to seconds and remove the background beat entirely, but needs a Pub/Sub topic and a public webhook; it would plug into `SyncCoordinator#requestSync` without other changes.
 - **Realtime streams, sync coordination and rate limiting are in-memory** — fine for a single backend instance; a multi-instance deployment should back `EventStreamService`, `SyncCoordinator` and `RateLimiterService` with a shared broker/store (Redis, or Postgres `LISTEN/NOTIFY`). Sessions are already shared (Postgres).
-- **Archived mail is kept, not deleted.** Removing a message from Gmail's inbox moves the InboxIQ copy to the Archived list with its summary and to-dos intact, and putting it back in the Gmail inbox returns it; deleting, trashing or marking it spam removes it.
+- **Archived mail is kept, not deleted.** Removing a message from Gmail's inbox moves the Mailroom copy to the Archived list with its summary and to-dos intact, and putting it back in the Gmail inbox returns it; deleting, trashing or marking it spam removes it.
 - **Thread threading headers** (`In-Reply-To`/`References`) on sent replies rely on Gmail's `threadId` grouping; the original message's RFC 822 `Message-ID` header isn't currently persisted, so header-level threading is best-effort (Gmail's own thread grouping still works correctly).

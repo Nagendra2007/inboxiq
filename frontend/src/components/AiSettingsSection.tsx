@@ -10,7 +10,7 @@ import { useToast } from './ui/Toast';
 import { ExternalLinkIcon, LockIcon, SparklesIcon } from './ui/Icons';
 
 /**
- * Admin-only: the AI provider, model and key every user of this InboxIQ
+ * Admin-only: the AI provider, model and key every user of this Mailroom
  * runs on. Changes apply to everyone immediately; the key is encrypted on
  * the server and never sent back (only its last four characters).
  */
@@ -132,7 +132,7 @@ export function AiSettingsSection() {
         <span className="rounded-full bg-accent-500/10 px-2 py-0.5 text-2xs font-semibold text-accent-300">Admin</span>
       </div>
       <p className="mt-1 text-sm leading-relaxed text-white/45">
-        The AI service that writes summaries and drafts for everyone using this InboxIQ. Changes apply immediately.
+        The AI service that writes summaries and drafts for everyone using this Mailroom. Changes apply immediately.
       </p>
 
       {loadError && (

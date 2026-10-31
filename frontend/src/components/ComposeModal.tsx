@@ -217,7 +217,7 @@ export function ComposeModal({ onClose, onSent }: { onClose: () => void; onSent?
         onClose={requestClose}
         dismissible={!busy}
         title="New message"
-        description={step === 'sent' ? undefined : 'Describe what you want to say — InboxIQ drafts it, you approve it.'}
+        description={step === 'sent' ? undefined : 'Describe what you want to say — Mailroom drafts it, you approve it.'}
         size="lg"
         footer={footer}
       >
