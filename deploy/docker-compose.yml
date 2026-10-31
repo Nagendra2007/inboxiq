@@ -1,7 +1,8 @@
 # Production stack for a single EC2 instance: the app, and Caddy in front of
-# it for TLS. Postgres is deliberately NOT here — the database stays on Neon,
-# so this box holds no state worth backing up and can be rebuilt from this
-# file at any time.
+# it for TLS. Postgres is deliberately NOT here — it is RDS, in the same VPC
+# and the same region, reachable only from this instance's security group. So
+# this box holds no state worth backing up and can be rebuilt from this file
+# at any time.
 #
 #   cd /opt/mailroom && docker compose pull && docker compose up -d
 #

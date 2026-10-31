@@ -139,7 +139,9 @@ Keys saved here are encrypted with `TOKEN_ENCRYPTION_KEY` and never sent back to
 
 ## Deploying on AWS EC2
 
-One `t4g.small` (2 GB, Graviton/ARM) running two containers: the app, and Caddy in front of it for TLS. The database stays on Neon, so the instance holds no state worth backing up and can be rebuilt from `deploy/` at any time. About $12/month on demand, in `ap-south-1` if you're in India.
+One `t4g.small` (2 GB, Graviton/ARM) running two containers — the app, and Caddy in front of it for TLS — with Postgres on RDS in the same VPC. The instance itself holds no state worth backing up and can be rebuilt from `deploy/` at any time.
+
+Put **everything in `ap-south-1` (Mumbai)**: closest region to you, and co-locating the database with the app makes each query a round trip of about a millisecond instead of crossing an ocean. Roughly $12/month for the instance and $15 for `db.t4g.micro` with 20 GB of gp3 — check whether your account still has the 12-month RDS free tier before paying for the database.
 
 Everything below assumes the files in [`deploy/`](deploy/).
 
@@ -160,7 +162,35 @@ sudo usermod -aG docker ec2-user        # log out and back in
 sudo dnf install -y docker-compose-plugin
 ```
 
-### 2. The files
+### 2. The database (RDS)
+
+Create a Postgres instance, `db.t4g.micro`, 20 GB gp3 with storage autoscaling on, single-AZ. Match the **major version** to whatever you are migrating from, or `pg_restore` will complain. Set **Initial database name** to `mailroom` — leave it blank and RDS creates no database at all, and the JDBC URL fails on first boot with a message that doesn't say so.
+
+Two settings that matter more than the rest:
+
+- **Public access: No.** The database should be reachable only from inside the VPC.
+- **Security group: inbound 5432 from the EC2 instance's security group**, not from an IP range. Referencing the group means the rule keeps working when the instance's address changes.
+
+Automated backups default to 7 days and are free up to the size of the database. That retention is most of what you are paying RDS for over a Postgres container, so don't turn it off.
+
+#### Bringing the existing data across
+
+Only if you want the already-synced mail and the connected Gmail accounts. Run it **from the EC2 instance**, which can reach both ends:
+
+```bash
+sudo dnf install -y postgresql16
+pg_dump "postgresql://<old-user>:<pw>@<old-host>/<db>?sslmode=require" -Fc -f mailroom.dump
+pg_restore --no-owner --no-privileges \
+  -d "postgresql://mailroom:<pw>@<rds-endpoint>:5432/mailroom?sslmode=require" mailroom.dump
+```
+
+The dump includes `flyway_schema_history`, so on first boot Flyway sees every migration as already applied and validates instead of re-running them.
+
+**Carry `TOKEN_ENCRYPTION_KEY` across unchanged.** The `mail_accounts` rows hold Gmail refresh tokens encrypted with it; a new key turns all of them into undecryptable bytes and every user has to reconnect Gmail.
+
+Skipping the migration is also a legitimate choice — start on an empty database, let Flyway build the schema, and sign in again. You lose the synced mail and reconnect Gmail once.
+
+### 3. The files
 
 ```bash
 sudo install -d -o ec2-user -g ec2-user /opt/mailroom
@@ -172,14 +202,11 @@ echo "MAILROOM_DOMAIN=mail.example.com" > .env
 
 Then write `app.env` from [`deploy/app.env.example`](deploy/app.env.example) and `chmod 600 app.env` — it holds the keys to a Gmail mailbox.
 
-Two values must come across from Render unchanged:
+`DATABASE_URL` points at the RDS endpoint from step 2. **`TOKEN_ENCRYPTION_KEY` must come across from Render unchanged** if you migrated the rows — it is the AES-256-GCM key for the stored Gmail tokens, and a new one makes every token in the database undecryptable.
 
-- **`TOKEN_ENCRYPTION_KEY`** — the AES-256-GCM key for stored Gmail tokens. A new key makes every token in the database undecryptable and forces every user to reconnect.
-- **`DATABASE_URL`** and its credentials, if you want to keep the mail that's already synced.
+Three more must be set explicitly, because nothing on EC2 injects `RENDER_EXTERNAL_URL`: `FRONTEND_URL`, `CORS_ALLOWED_ORIGINS`, `GOOGLE_REDIRECT_URI`. Left unset they fall back to `http://localhost:5173` and sign-in fails as a Google `redirect_uri_mismatch`.
 
-And three must be set explicitly, because nothing on EC2 injects `RENDER_EXTERNAL_URL`: `FRONTEND_URL`, `CORS_ALLOWED_ORIGINS`, `GOOGLE_REDIRECT_URI`. Left unset they fall back to `http://localhost:5173` and sign-in fails as a Google `redirect_uri_mismatch`.
-
-### 3. First run
+### 4. First run
 
 ```bash
 cd /opt/mailroom && docker compose up -d
@@ -187,11 +214,11 @@ docker compose logs -f caddy      # watch the certificate being issued
 curl -sS https://mail.example.com/actuator/health
 ```
 
-### 4. Tell Google
+### 5. Tell Google
 
 Add `https://mail.example.com/login/oauth2/code/google` to **Google Cloud Console → Credentials → your OAuth client → Authorised redirect URIs**. Until you do, sign-in fails.
 
-### 5. Automatic deploys
+### 6. Automatic deploys
 
 [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) builds the image on an arm64 runner, pushes it to GHCR and restarts the container over SSH. Set these in the repository:
 
