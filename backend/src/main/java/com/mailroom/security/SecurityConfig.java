@@ -110,10 +110,12 @@ public class SecurityConfig {
             .csrf(csrf -> csrf
                     .csrfTokenRepository(csrfTokenRepository)
                     .csrfTokenRequestHandler(new SpaCsrfTokenRequestHandler())
-                    // Nothing today needs a CSRF exemption: sync/analysis are
-                    // user-initiated POSTs from the authenticated SPA, and Gmail
-                    // notifications (if enabled later) would arrive on their own
-                    // unauthenticated endpoint anyway, never inside /api/**.
+                    // Google posts Gmail notifications with no session and no
+                    // CSRF token, so this one path is exempt. It is outside
+                    // /api/** precisely so the exemption cannot widen: it
+                    // authenticates itself with a shared secret and treats its
+                    // own body as untrusted (see GmailPushController).
+                    .ignoringRequestMatchers("/gmail/push")
             )
             .headers(headers -> headers
                     .contentSecurityPolicy(csp -> csp.policyDirectives(CONTENT_SECURITY_POLICY))
@@ -125,6 +127,9 @@ public class SecurityConfig {
                     // (the /api/events stream closing) is not a new request.
                     .dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll()
                     .requestMatchers("/oauth2/**", "/login/**", "/actuator/health", "/error").permitAll()
+                    // Called by Google, not by a browser. Guarded by the shared
+                    // secret it carries, not by a session.
+                    .requestMatchers(HttpMethod.POST, "/gmail/push").permitAll()
                     .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                     .requestMatchers("/api/**").authenticated()
                     // Static SPA bundle (present only when the frontend is

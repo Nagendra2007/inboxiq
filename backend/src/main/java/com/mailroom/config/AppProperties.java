@@ -136,6 +136,13 @@ public class AppProperties {
         // Upper bound on mailboxes started per background tick.
         private int backgroundBatchSize = 50;
         private int fetchConcurrency = 4;
+        // Pub/Sub topic Gmail publishes change notifications to, as
+        // projects/<project>/topics/<topic>. Blank disables push entirely and
+        // leaves the poll as the only way new mail is noticed.
+        private String pushTopic;
+        // Shared secret the Pub/Sub push subscription puts in the endpoint's
+        // query string. Without it the endpoint refuses everything.
+        private String pushToken;
 
         public int getFirstSyncMessageCap() { return firstSyncMessageCap; }
         public void setFirstSyncMessageCap(int firstSyncMessageCap) { this.firstSyncMessageCap = firstSyncMessageCap; }
@@ -149,6 +156,10 @@ public class AppProperties {
         public void setBackgroundActiveDays(int backgroundActiveDays) { this.backgroundActiveDays = backgroundActiveDays; }
         public int getBackgroundBatchSize() { return backgroundBatchSize; }
         public void setBackgroundBatchSize(int backgroundBatchSize) { this.backgroundBatchSize = backgroundBatchSize; }
+        public String getPushTopic() { return pushTopic; }
+        public void setPushTopic(String pushTopic) { this.pushTopic = pushTopic; }
+        public String getPushToken() { return pushToken; }
+        public void setPushToken(String pushToken) { this.pushToken = pushToken; }
         public int getFetchConcurrency() { return fetchConcurrency; }
         public void setFetchConcurrency(int fetchConcurrency) { this.fetchConcurrency = fetchConcurrency; }
     }

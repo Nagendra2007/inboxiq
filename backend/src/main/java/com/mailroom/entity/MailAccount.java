@@ -81,6 +81,15 @@ public class MailAccount {
     @Column(name = "active", nullable = false)
     private boolean active = true;
 
+    /**
+     * When this mailbox's Gmail push registration lapses. Gmail caps a
+     * {@code users.watch()} at seven days and then stops notifying silently —
+     * no error, no final message — so {@code GmailWatchService} renews well
+     * before this. Null means no watch has been registered.
+     */
+    @Column(name = "gmail_watch_expiration")
+    private Instant gmailWatchExpiration;
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     private Instant createdAt;

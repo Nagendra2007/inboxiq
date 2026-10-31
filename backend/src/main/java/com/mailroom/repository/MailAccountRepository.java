@@ -16,6 +16,22 @@ public interface MailAccountRepository extends JpaRepository<MailAccount, UUID> 
     Optional<MailAccount> findByUserIdAndProvider(UUID userId, MailProvider provider);
     Optional<MailAccount> findByUserIdAndProviderAndActiveTrue(UUID userId, MailProvider provider);
 
+    /** Which mailbox a Gmail push notification belongs to. */
+    Optional<MailAccount> findByProviderEmailAndProviderAndActiveTrue(String providerEmail, MailProvider provider);
+
+    /**
+     * Mailboxes whose push registration has lapsed or is about to. A null
+     * expiry is included on purpose: it means no watch was ever registered,
+     * which needs the same call as a renewal.
+     */
+    @Query("""
+           select a from MailAccount a
+           where a.provider = :provider and a.active = true and a.reauthRequired = false
+             and (a.gmailWatchExpiration is null or a.gmailWatchExpiration < :cutoff)
+           """)
+    List<MailAccount> findWatchesDueForRenewal(@Param("provider") MailProvider provider,
+                                               @Param("cutoff") Instant cutoff);
+
     /**
      * Mailboxes the background poller should check while their owner is away:
      * connected, not waiting on a reconnect, and not checked since

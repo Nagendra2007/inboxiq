@@ -12,6 +12,8 @@ import com.google.api.services.gmail.model.ListHistoryResponse;
 import com.google.api.services.gmail.model.ListMessagesResponse;
 import com.google.api.services.gmail.model.Message;
 import com.google.api.services.gmail.model.ModifyMessageRequest;
+import com.google.api.services.gmail.model.WatchRequest;
+import com.google.api.services.gmail.model.WatchResponse;
 import com.mailroom.entity.MailAccount;
 import com.mailroom.exception.GmailIntegrationException;
 import jakarta.mail.Session;
@@ -23,6 +25,7 @@ import org.springframework.stereotype.Component;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.time.Instant;
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.List;
@@ -75,6 +78,44 @@ public class GmailInboxClient {
         try {
             BigInteger historyId = gmail.users().getProfile(USER_ID).execute().getHistoryId();
             return historyId == null ? null : historyId.toString();
+        } catch (GoogleJsonResponseException e) {
+            throw translate(e);
+        } catch (IOException e) {
+            throw GmailIntegrationException.unavailable(e);
+        }
+    }
+
+    /**
+     * Asks Gmail to publish a notification to {@code topicName} whenever this
+     * mailbox's INBOX changes, and returns when that registration lapses.
+     *
+     * <p>Gmail caps a watch at seven days and then simply stops publishing —
+     * no error and no final notification — so the only evidence of a lapsed
+     * watch is mail quietly going back to arriving on the poll interval.
+     * Hence the expiry is persisted and renewed rather than assumed.
+     *
+     * <p>Calling this again for the same mailbox replaces the registration
+     * instead of adding a second one, so renewal is just another call.
+     */
+    public Instant watchInbox(Gmail gmail, String topicName) {
+        try {
+            WatchResponse response = gmail.users().watch(USER_ID, new WatchRequest()
+                    .setTopicName(topicName)
+                    .setLabelIds(List.of(LABEL_INBOX))
+                    .setLabelFilterAction("include")).execute();
+            Long expiration = response.getExpiration();
+            return expiration == null ? null : Instant.ofEpochMilli(expiration);
+        } catch (GoogleJsonResponseException e) {
+            throw translate(e);
+        } catch (IOException e) {
+            throw GmailIntegrationException.unavailable(e);
+        }
+    }
+
+    /** Stops notifications for a mailbox. Used when Gmail is disconnected. */
+    public void stopWatch(Gmail gmail) {
+        try {
+            gmail.users().stop(USER_ID).execute();
         } catch (GoogleJsonResponseException e) {
             throw translate(e);
         } catch (IOException e) {

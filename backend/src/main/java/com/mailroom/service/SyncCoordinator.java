@@ -57,6 +57,9 @@ public class SyncCoordinator {
     /** Checks for a user who has the app open are skipped if a pass finished this recently. */
     private static final Duration MIN_GAP_WHILE_OPEN = Duration.ofSeconds(10);
 
+    /** Just long enough to fold a burst of notifications into one pass. */
+    private static final Duration MIN_GAP_ON_PUSH = Duration.ofSeconds(2);
+
     private final EmailSyncService emailSyncService;
     private final MailAccountRepository mailAccountRepository;
     private final EventStreamService events;
@@ -124,6 +127,13 @@ public class SyncCoordinator {
         return switch (trigger) {
             case CONNECT, POLL -> MIN_GAP_WHILE_OPEN;
             case BACKGROUND -> backgroundInterval();
+            // Gmail fans out a notification per change, so three messages
+            // landing together arrive as three pushes. Coalescing them into
+            // one pass costs two seconds and saves three Gmail round trips;
+            // anything a coalesced pass misses, the next push or the poll
+            // picks up, because the sync is driven by historyId and not by
+            // the notification's contents.
+            case PUSH -> MIN_GAP_ON_PUSH;
             case LOGIN, MANUAL -> null;
         };
     }
