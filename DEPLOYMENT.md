@@ -153,7 +153,9 @@ Point an A record at the instance's **Elastic IP** — allocate one and associat
 
 ### 1. The instance
 
-Launch `t4g.small`, Amazon Linux 2023 (arm64), 20 GB gp3. Security group: inbound `80` and `443` from anywhere, `22` from **your IP only**.
+Launch `t4g.small`, Amazon Linux 2023 (arm64), 20 GB gp3. Security group: inbound TCP `80` and `443` from anywhere, **UDP `443` from anywhere too**, and `22` from **your IP only**.
+
+That UDP rule is what enables HTTP/3. Caddy serves it by default, and QUIC is noticeably better than TCP on a patchy mobile connection — without the rule the browser silently falls back to HTTP/2 and you never find out.
 
 ```bash
 sudo dnf install -y docker
@@ -164,7 +166,7 @@ sudo dnf install -y docker-compose-plugin
 
 ### 2. The database (RDS)
 
-Create a Postgres instance, `db.t4g.micro`, 20 GB gp3 with storage autoscaling on, single-AZ. Match the **major version** to whatever you are migrating from, or `pg_restore` will complain. Set **Initial database name** to `mailroom` — leave it blank and RDS creates no database at all, and the JDBC URL fails on first boot with a message that doesn't say so.
+Create a Postgres instance, `db.t4g.micro`, 20 GB gp3 with storage autoscaling on, single-AZ. Take the latest Postgres major version — starting empty, there is nothing to match. (If you migrate instead, match the major version of the old database or `pg_restore` will complain.) Set **Initial database name** to `mailroom` — leave it blank and RDS creates no database at all, and the JDBC URL fails on first boot with a message that doesn't say so.
 
 Two settings that matter more than the rest:
 
@@ -173,9 +175,15 @@ Two settings that matter more than the rest:
 
 Automated backups default to 7 days and are free up to the size of the database. That retention is most of what you are paying RDS for over a Postgres container, so don't turn it off.
 
-#### Bringing the existing data across
+#### Starting fresh (recommended)
 
-Only if you want the already-synced mail and the connected Gmail accounts. Run it **from the EC2 instance**, which can reach both ends:
+Leave the database empty. Flyway builds the schema on first boot, you sign in, Gmail reconnects, and the newest `FIRST_SYNC_MESSAGE_CAP` messages sync. Generate a brand new key with `openssl rand -base64 32` for `TOKEN_ENCRYPTION_KEY` — with no rows to decrypt, nothing has to match anything.
+
+It costs you the mail already synced on Render and one Gmail reconnect. It saves a dump, a restore, a Postgres version match, and any chance of dragging a subtly wrong encryption key along behind you.
+
+#### Or bringing the existing data across
+
+Run it **from the EC2 instance**, which is the only machine that can reach both ends:
 
 ```bash
 sudo dnf install -y postgresql16
@@ -186,9 +194,7 @@ pg_restore --no-owner --no-privileges \
 
 The dump includes `flyway_schema_history`, so on first boot Flyway sees every migration as already applied and validates instead of re-running them.
 
-**Carry `TOKEN_ENCRYPTION_KEY` across unchanged.** The `mail_accounts` rows hold Gmail refresh tokens encrypted with it; a new key turns all of them into undecryptable bytes and every user has to reconnect Gmail.
-
-Skipping the migration is also a legitimate choice — start on an empty database, let Flyway build the schema, and sign in again. You lose the synced mail and reconnect Gmail once.
+**Then `TOKEN_ENCRYPTION_KEY` must come across unchanged.** The `mail_accounts` rows hold Gmail refresh tokens encrypted with it, and a new key turns all of them into undecryptable bytes — which forces the reconnect you were migrating to avoid.
 
 ### 3. The files
 
@@ -202,7 +208,7 @@ echo "MAILROOM_DOMAIN=mail.example.com" > .env
 
 Then write `app.env` from [`deploy/app.env.example`](deploy/app.env.example) and `chmod 600 app.env` — it holds the keys to a Gmail mailbox.
 
-`DATABASE_URL` points at the RDS endpoint from step 2. **`TOKEN_ENCRYPTION_KEY` must come across from Render unchanged** if you migrated the rows — it is the AES-256-GCM key for the stored Gmail tokens, and a new one makes every token in the database undecryptable.
+`DATABASE_URL` points at the RDS endpoint from step 2. Starting fresh, generate `TOKEN_ENCRYPTION_KEY` with `openssl rand -base64 32`. Only if you migrated the rows must it come across from Render unchanged — it is the AES-256-GCM key for the stored Gmail tokens.
 
 Three more must be set explicitly, because nothing on EC2 injects `RENDER_EXTERNAL_URL`: `FRONTEND_URL`, `CORS_ALLOWED_ORIGINS`, `GOOGLE_REDIRECT_URI`. Left unset they fall back to `http://localhost:5173` and sign-in fails as a Google `redirect_uri_mismatch`.
 
