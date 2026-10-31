@@ -162,8 +162,39 @@ public class VoiceComposeService {
             if (part.startsWith(needle)) return 60;
         }
         if (local.startsWith(needle)) return 50;
+
+        // Then how it sounds. Speech recognition gets the consonants of a
+        // name far more reliably than the vowels — Priya comes back as
+        // Preeya, Samir as Sameer, Dheeraj as Deeraj — so a skeleton with
+        // the vowels taken out matches what a letter-by-letter comparison
+        // misses. Ranked below every spelling match, never above one.
+        String heardKey = phonetic(needle);
+        if (!heardKey.isEmpty()) {
+            for (String part : name.split("\\s+")) {
+                if (phonetic(part).equals(heardKey)) return 45;
+            }
+            if (phonetic(local).equals(heardKey)) return 40;
+        }
+
         if (needle.length() >= 4 && (name.contains(needle) || local.contains(needle))) return 30;
         return 0;
+    }
+
+    /**
+     * A name reduced to the part a transcript tends to get right: its
+     * consonants, with the digraphs English spells several ways folded
+     * together first. Deliberately crude — it exists to put a plausible
+     * match in front of someone to confirm, not to decide anything.
+     */
+    static String phonetic(String value) {
+        String t = value.toLowerCase(Locale.ROOT).replaceAll("[^a-z]", "");
+        t = t.replace("ph", "f").replace("gh", "g").replace("kh", "k")
+             .replace("dh", "d").replace("th", "t").replace("bh", "b")
+             .replace("sh", "s").replace("ch", "c").replace("ck", "k")
+             .replace("z", "s").replace("w", "v");
+        // y goes with the vowels: it is a vowel as often as not in a name.
+        t = t.replaceAll("[aeiouy]", "");
+        return t.replaceAll("(.)\\1+", "$1");
     }
 
     /** {@code "Priya Shah" <priya@x.io>} into its two halves. */

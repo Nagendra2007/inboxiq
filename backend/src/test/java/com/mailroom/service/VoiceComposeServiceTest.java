@@ -154,6 +154,43 @@ class VoiceComposeServiceTest {
         assertThat(resolve("Sam")).hasSize(3);
     }
 
+    // --- names the transcript got slightly wrong ---------------------------
+
+    @Test
+    void matchesANameTheTranscriptSpelledByEar() {
+        inbox("\"Priya Shah\" <priya@northwind.io>");
+
+        // What Chrome actually hands back for "Priya" about half the time.
+        assertThat(resolve("Preeya")).containsExactly("priya@northwind.io");
+        assertThat(resolve("Pria")).containsExactly("priya@northwind.io");
+    }
+
+    @Test
+    void foldsTheDigraphsEnglishSpellsSeveralWays() {
+        inbox("\"Dheeraj Nair\" <dheeraj@acme.test>", "\"Samir Khan\" <samir@acme.test>");
+
+        assertThat(resolve("Deeraj")).containsExactly("dheeraj@acme.test");
+        assertThat(resolve("Sameer")).containsExactly("samir@acme.test");
+    }
+
+    @Test
+    void stillPrefersTheSpellingThatActuallyMatches() {
+        inbox("\"Pria Menon\" <pria@acme.test>", "\"Priya Shah\" <priya@northwind.io>");
+
+        // Both sound alike; only one is spelled the way it was heard.
+        assertThat(resolve("Priya")).first().isEqualTo("priya@northwind.io");
+    }
+
+    @Test
+    void doesNotMatchOnSoundAloneWhenNothingIsLeftToCompare() {
+        inbox("\"Aia Oue\" <vowels@acme.test>");
+
+        // A name of nothing but vowels reduces to an empty skeleton, which
+        // would otherwise match every other empty skeleton.
+        assertThat(VoiceComposeService.phonetic("Aia Oue")).isEmpty();
+        assertThat(resolve("Eee")).isEmpty();
+    }
+
     @Test
     void handlesAnEmptyMailbox() {
         inbox();

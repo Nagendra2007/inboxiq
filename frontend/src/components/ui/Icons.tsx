@@ -347,3 +347,11 @@ export const ImageIcon = (p: IconProps) => (
     <path d="m21 16-4.5-4.5L8 20" />
   </Svg>
 );
+
+export const MicIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <rect x="9" y="2" width="6" height="11" rx="3" />
+    <path d="M5 11a7 7 0 0 0 14 0" />
+    <path d="M12 18v4M8 22h8" />
+  </Svg>
+);
