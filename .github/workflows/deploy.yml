@@ -1,0 +1,89 @@
+name: Deploy to EC2
+
+# Builds the image and rolls it out to the instance. The build runs on an
+# arm64 runner because t4g instances are Graviton — building arm64 under
+# QEMU on an x86 runner works but takes about four times as long.
+#
+# Setup, once:
+#   repository VARIABLE  EC2_HOST         the instance's hostname or IP
+#   repository VARIABLE  EC2_USER         ec2-user (Amazon Linux) or ubuntu
+#   repository VARIABLE  MAILROOM_DOMAIN  the hostname Caddy serves
+#   repository SECRET    EC2_SSH_KEY      the private half of the key pair
+#
+# Until EC2_HOST is set the deploy step is skipped, so this is harmless to
+# merge before the instance exists.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-ec2
+  cancel-in-progress: false
+
+jobs:
+  image:
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.name.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lower-case the image name
+        id: name
+        # GHCR rejects capitals, and the owner here has one.
+        run: echo "image=ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/mailroom" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/arm64
+          push: true
+          tags: |
+            ${{ steps.name.outputs.image }}:latest
+            ${{ steps.name.outputs.image }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  rollout:
+    needs: image
+    runs-on: ubuntu-latest
+    if: vars.EC2_HOST != ''
+    steps:
+      - name: Pull and restart on the instance
+        env:
+          IMAGE: ${{ needs.image.outputs.image }}:${{ github.sha }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/deploy
+          chmod 600 ~/.ssh/deploy
+          ssh-keyscan -H "${{ vars.EC2_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+          # Pin the exact image rather than :latest, so a rollback is just
+          # re-running an older commit's deploy.
+          ssh -i ~/.ssh/deploy "${{ vars.EC2_USER }}@${{ vars.EC2_HOST }}" \
+            "cd /opt/mailroom \
+             && MAILROOM_IMAGE=$IMAGE docker compose pull app \
+             && MAILROOM_IMAGE=$IMAGE docker compose up -d --no-deps app \
+             && docker image prune -f"
+
+      - name: Wait for it to answer
+        if: vars.MAILROOM_DOMAIN != ''
+        run: |
+          for i in $(seq 1 30); do
+            code=$(curl -sS -o /dev/null -w "%{http_code}" -m 20 "https://${{ vars.MAILROOM_DOMAIN }}/actuator/health") || code=000
+            echo "attempt $i -> $code"
+            if [ "$code" = 200 ]; then exit 0; fi
+            sleep 10
+          done
+          echo "::error::the service did not come back healthy"
+          exit 1

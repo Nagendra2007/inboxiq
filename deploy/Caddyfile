@@ -1,0 +1,19 @@
+# Caddy terminates TLS and proxies to the app container. Certificates are
+# obtained from Let's Encrypt and renewed automatically, which is the whole
+# reason Caddy is here rather than nginx.
+#
+# MAILROOM_DOMAIN must be a real hostname that resolves to this machine.
+# Let's Encrypt will not issue a certificate for a bare IP address, and
+# Google will not accept an http:// redirect URI for OAuth, so a domain is
+# not optional. A free DuckDNS subdomain works.
+
+{$MAILROOM_DOMAIN} {
+	encode zstd gzip
+
+	reverse_proxy app:8080 {
+		# Server-sent events. Without this Caddy buffers the response and
+		# /api/events never reaches the browser until the stream ends —
+		# which, for a stream designed never to end, means never.
+		flush_interval -1
+	}
+}

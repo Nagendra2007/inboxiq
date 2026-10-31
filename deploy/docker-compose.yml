@@ -1,0 +1,51 @@
+# Production stack for a single EC2 instance: the app, and Caddy in front of
+# it for TLS. Postgres is deliberately NOT here — the database stays on Neon,
+# so this box holds no state worth backing up and can be rebuilt from this
+# file at any time.
+#
+#   cd /opt/mailroom && docker compose pull && docker compose up -d
+#
+# Expects /opt/mailroom/app.env (see app.env.example) and MAILROOM_DOMAIN
+# in /opt/mailroom/.env.
+
+services:
+  app:
+    image: ${MAILROOM_IMAGE:-ghcr.io/nagendra2007/mailroom:latest}
+    restart: unless-stopped
+    env_file:
+      - ./app.env
+    environment:
+      PORT: "8080"
+    # 2 GB box, and the JVM sizes its heap from the container limit
+    # (MaxRAMPercentage=70 in the Dockerfile). Capping the container leaves
+    # room for Caddy and the OS instead of letting the heap eat the host.
+    mem_limit: 1200m
+    expose:
+      - "8080"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/actuator/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 120s
+      retries: 3
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      MAILROOM_DOMAIN: ${MAILROOM_DOMAIN:?set MAILROOM_DOMAIN in /opt/mailroom/.env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificates live here. Losing this volume means re-issuing them,
+      # and Let's Encrypt rate-limits that.
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

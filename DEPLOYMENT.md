@@ -137,6 +137,80 @@ Keys saved here are encrypted with `TOKEN_ENCRYPTION_KEY` and never sent back to
 | Out-of-memory restarts on the free plan | Add `JAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=60 -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError`. |
 | Mail only arrives while the app is open, and the first visit of the day takes a minute | The instance is asleep, so nothing runs in between — see [Syncing while the app is closed](#syncing-while-the-app-is-closed). |
 
+## Deploying on AWS EC2
+
+One `t4g.small` (2 GB, Graviton/ARM) running two containers: the app, and Caddy in front of it for TLS. The database stays on Neon, so the instance holds no state worth backing up and can be rebuilt from `deploy/` at any time. About $12/month on demand, in `ap-south-1` if you're in India.
+
+Everything below assumes the files in [`deploy/`](deploy/).
+
+### You need a domain first
+
+Let's Encrypt will not issue a certificate for a bare IP, and Google will not accept an `http://` redirect URI, so there is no IP-only path to a working sign-in. A real domain is ~$10/year; a free `something.duckdns.org` works just as well and is on the Public Suffix List, so it gets its own certificate rate limit.
+
+Point an A record at the instance's **Elastic IP** — allocate one and associate it, or the address changes on every stop/start and the certificate goes with it.
+
+### 1. The instance
+
+Launch `t4g.small`, Amazon Linux 2023 (arm64), 20 GB gp3. Security group: inbound `80` and `443` from anywhere, `22` from **your IP only**.
+
+```bash
+sudo dnf install -y docker
+sudo systemctl enable --now docker
+sudo usermod -aG docker ec2-user        # log out and back in
+sudo dnf install -y docker-compose-plugin
+```
+
+### 2. The files
+
+```bash
+sudo install -d -o ec2-user -g ec2-user /opt/mailroom
+cd /opt/mailroom
+curl -O https://raw.githubusercontent.com/<you>/mailroom/main/deploy/docker-compose.yml
+curl -O https://raw.githubusercontent.com/<you>/mailroom/main/deploy/Caddyfile
+echo "MAILROOM_DOMAIN=mail.example.com" > .env
+```
+
+Then write `app.env` from [`deploy/app.env.example`](deploy/app.env.example) and `chmod 600 app.env` — it holds the keys to a Gmail mailbox.
+
+Two values must come across from Render unchanged:
+
+- **`TOKEN_ENCRYPTION_KEY`** — the AES-256-GCM key for stored Gmail tokens. A new key makes every token in the database undecryptable and forces every user to reconnect.
+- **`DATABASE_URL`** and its credentials, if you want to keep the mail that's already synced.
+
+And three must be set explicitly, because nothing on EC2 injects `RENDER_EXTERNAL_URL`: `FRONTEND_URL`, `CORS_ALLOWED_ORIGINS`, `GOOGLE_REDIRECT_URI`. Left unset they fall back to `http://localhost:5173` and sign-in fails as a Google `redirect_uri_mismatch`.
+
+### 3. First run
+
+```bash
+cd /opt/mailroom && docker compose up -d
+docker compose logs -f caddy      # watch the certificate being issued
+curl -sS https://mail.example.com/actuator/health
+```
+
+### 4. Tell Google
+
+Add `https://mail.example.com/login/oauth2/code/google` to **Google Cloud Console → Credentials → your OAuth client → Authorised redirect URIs**. Until you do, sign-in fails.
+
+### 5. Automatic deploys
+
+[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) builds the image on an arm64 runner, pushes it to GHCR and restarts the container over SSH. Set these in the repository:
+
+| | Name | Value |
+|---|---|---|
+| Variable | `EC2_HOST` | the Elastic IP or hostname |
+| Variable | `EC2_USER` | `ec2-user` |
+| Variable | `MAILROOM_DOMAIN` | `mail.example.com` |
+| Secret | `EC2_SSH_KEY` | the private key for that instance |
+
+The rollout step is skipped while `EC2_HOST` is unset, so the workflow is safe to merge before the instance exists. Each deploy pins the image to the commit SHA, so a rollback is re-running an older commit's workflow.
+
+### Notes
+
+- **Delete `.github/workflows/keep-warm.yml` once you cut over.** Nothing spins down here, so the ping is pointless — and the background sync finally runs unattended, which was the whole point of it.
+- `flush_interval -1` in the Caddyfile is not optional. Without it Caddy buffers responses and `/api/events` never reaches the browser, so live updates silently stop working.
+- Keep `mem_limit` on the app container. The JVM sizes its heap from the container limit, and without one it takes 70% of the whole host and starves Caddy.
+- Certificates live in the `caddy_data` volume. Don't delete it casually — Let's Encrypt rate-limits re-issuing.
+
 ## Other hosts
 
 The image runs anywhere Docker does (Railway, Fly.io, a VPS, Kubernetes). It honours the platform's `PORT` variable and trusts `X-Forwarded-*` headers from private-network proxies, so it works behind a TLS-terminating load balancer:
