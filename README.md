@@ -371,8 +371,8 @@ npm run build   # type-checks (tsc -b) then produces dist/
 mailroom/
 ├── Dockerfile         Production image: builds the SPA into the Spring Boot jar (one origin)
 ├── docker-compose.yml Postgres + the app at http://localhost:8080
-├── render.yaml        Render Blueprint for the production service
-├── .github/workflows/ CI: frontend build, backend tests, Docker build
+├── deploy/            EC2 production stack: compose file, Caddyfile, env template
+├── .github/workflows/ CI (build + tests) and deploy (image to GHCR, rollout to EC2)
 ├── backend/           Spring Boot API (Java 17+)
 │   └── src/main/java/com/mailroom/
 │       ├── config/       AppProperties (typed app.* config)
