@@ -14,6 +14,7 @@ import com.mailroom.mapper.EmailMapper;
 import com.mailroom.security.CurrentUserProvider;
 import com.mailroom.service.AssistantCommandService;
 import com.mailroom.service.MailAccountService;
+import com.mailroom.ai.TranscriptionClient;
 import com.mailroom.service.VoiceComposeService;
 import com.mailroom.service.ReplyService;
 import jakarta.validation.Valid;
@@ -22,8 +23,12 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestPart;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
@@ -44,19 +49,22 @@ public class ComposeController {
     private final EmailMapper emailMapper;
     private final AssistantCommandService assistantCommandService;
     private final VoiceComposeService voiceComposeService;
+    private final TranscriptionClient transcriptionClient;
 
     public ComposeController(CurrentUserProvider currentUserProvider,
                               MailAccountService mailAccountService,
                               ReplyService replyService,
                               EmailMapper emailMapper,
                               AssistantCommandService assistantCommandService,
-                              VoiceComposeService voiceComposeService) {
+                              VoiceComposeService voiceComposeService,
+                              TranscriptionClient transcriptionClient) {
         this.currentUserProvider = currentUserProvider;
         this.mailAccountService = mailAccountService;
         this.replyService = replyService;
         this.emailMapper = emailMapper;
         this.assistantCommandService = assistantCommandService;
         this.voiceComposeService = voiceComposeService;
+        this.transcriptionClient = transcriptionClient;
     }
 
     /**
@@ -75,6 +83,29 @@ public class ComposeController {
                 parsed.subject(),
                 parsed.instruction(),
                 parsed.confident());
+    }
+
+    /**
+     * Turns a recorded clip into text. The browser records; the transcribing
+     * happens here, because the browser's own speech recognition is a call
+     * to a Google service that returns silence rather than an error when it
+     * is unhappy, and does not exist in Firefox at all.
+     */
+    @PostMapping(value = "/transcribe", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public Map<String, String> transcribe(@RequestPart("audio") MultipartFile audio) throws IOException {
+        currentUserProvider.getCurrentUser();
+        if (audio.isEmpty()) {
+            throw new IllegalArgumentException("The recording was empty.");
+        }
+        String name = audio.getOriginalFilename();
+        return Map.of("text", transcriptionClient.transcribe(audio.getBytes(),
+                name == null || name.isBlank() ? "clip.webm" : name));
+    }
+
+    /** Whether voice input is configured at all, so the UI can hide it if not. */
+    @GetMapping("/voice-available")
+    public Map<String, Boolean> voiceAvailable() {
+        return Map.of("available", transcriptionClient.isEnabled());
     }
 
     /** The address book, for the composer's recipient field to autocomplete from. */

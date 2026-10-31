@@ -2,6 +2,14 @@ spring:
   application:
     name: mailroom-backend
 
+  # A dictated sentence is a few hundred KB of Opus, and the 1MB default
+  # would refuse anything past a short phrase. TranscriptionClient enforces
+  # the real limit; this only has to sit above it.
+  servlet:
+    multipart:
+      max-file-size: 12MB
+      max-request-size: 12MB
+
   # Local runs (`mvn spring-boot:run` from backend/, or an IDE run from the
   # repo root) pick up backend/.env automatically — no need to export each
   # variable by hand. Real environment variables still take precedence, and
@@ -193,6 +201,14 @@ app:
     # A failed analysis is retried automatically until it has had this many
     # attempts (only for emails synced in the last day).
     analysis-max-attempts: 3
+    # Speech to text for the composer's voice input. Any OpenAI-compatible
+    # endpoint exposing /audio/transcriptions works; Groq's Whisper is fast
+    # and costs a fraction of a penny a clip. Separate from the chat
+    # provider above, because not all of those do audio (OpenRouter does
+    # not). Blank turns voice input off rather than failing at the user.
+    transcription-base-url: ${TRANSCRIPTION_BASE_URL:}
+    transcription-api-key: ${TRANSCRIPTION_API_KEY:}
+    transcription-model: ${TRANSCRIPTION_MODEL:whisper-large-v3-turbo}
 
   gmail:
     # First connection only: fetch just the newest N inbox messages, however

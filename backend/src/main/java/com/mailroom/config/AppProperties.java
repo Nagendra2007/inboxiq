@@ -89,6 +89,14 @@ public class AppProperties {
         private int analysisConcurrency = 2;
         /** Automatic attempts per email before a failed analysis is left for a manual retry. */
         private int analysisMaxAttempts = 3;
+        // Speech to text for the composer's voice input, on any
+        // OpenAI-compatible endpoint that exposes /audio/transcriptions.
+        // Separate from the chat provider above because not every one of
+        // those does audio at all - OpenRouter does not. Blank disables
+        // voice input rather than failing at the user.
+        private String transcriptionBaseUrl;
+        private String transcriptionApiKey;
+        private String transcriptionModel = "whisper-large-v3-turbo";
 
         public String getProvider() { return provider; }
         public void setProvider(String provider) { this.provider = provider; }
@@ -112,6 +120,12 @@ public class AppProperties {
         public void setMaxOutputTokens(int maxOutputTokens) { this.maxOutputTokens = maxOutputTokens; }
         public int getAnalysisConcurrency() { return analysisConcurrency; }
         public void setAnalysisConcurrency(int analysisConcurrency) { this.analysisConcurrency = analysisConcurrency; }
+        public String getTranscriptionBaseUrl() { return transcriptionBaseUrl; }
+        public void setTranscriptionBaseUrl(String transcriptionBaseUrl) { this.transcriptionBaseUrl = transcriptionBaseUrl; }
+        public String getTranscriptionApiKey() { return transcriptionApiKey; }
+        public void setTranscriptionApiKey(String transcriptionApiKey) { this.transcriptionApiKey = transcriptionApiKey; }
+        public String getTranscriptionModel() { return transcriptionModel; }
+        public void setTranscriptionModel(String transcriptionModel) { this.transcriptionModel = transcriptionModel; }
         public int getAnalysisMaxAttempts() { return analysisMaxAttempts; }
         public void setAnalysisMaxAttempts(int analysisMaxAttempts) { this.analysisMaxAttempts = analysisMaxAttempts; }
     }

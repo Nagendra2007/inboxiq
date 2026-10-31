@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ComposeApi } from '../api/endpoints';
 import { errorMessage } from '../api/client';
-import { useSpeechRecognition } from '../hooks/useSpeechRecognition';
+import { useAudioRecorder } from '../hooks/useAudioRecorder';
 import type { ContactDto, VoiceCommandResultDto } from '../types';
 import { cn } from '../lib/cn';
 import { MicIcon, SparklesIcon, XIcon } from './ui/Icons';
@@ -9,15 +9,19 @@ import { VoiceWave } from './ui/VoiceWave';
 import { Alert } from './ui/Feedback';
 
 /**
- * Say the whole instruction once — "write to Priya about the contract delay,
- * tell her we need two more days" — and the composer's three fields fill in.
+ * Say one instruction — "write to Priya about the contract delay, tell her
+ * we need two more days" — and the composer's three fields fill in.
  *
- * What it will not do is pick a recipient quietly. Speech recognition is at
- * its worst on names, which is the one field where being wrong means an
- * email in front of a stranger. So even a single confident match has to be
- * accepted; several are offered as a choice; none says so plainly. After
- * that it is the ordinary draft-review-send path, which already never sends
- * anything unseen.
+ * It records and transcribes server-side rather than using the browser's own
+ * speech recognition. Chrome's version is a call to a Google service that
+ * answers with silence when it is unreachable or unhappy, which is a bad
+ * thing to build on and impossible to debug from here; Firefox has none at
+ * all. The trade is that the words arrive when you stop rather than as you
+ * speak, the way a voice note does.
+ *
+ * The recipient is still never filled in silently. Speech is at its worst on
+ * names, and that is the one field where being wrong puts an email in front
+ * of a stranger.
  */
 export function VoiceCommandBar({
   onFilled,
@@ -26,52 +30,42 @@ export function VoiceCommandBar({
   onFilled: (fields: { toAddress?: string; subject?: string; instruction: string }) => void;
   disabled?: boolean;
 }) {
-  const speech = useSpeechRecognition();
-  const [thinking, setThinking] = useState(false);
+  const recorder = useAudioRecorder();
+  const [available, setAvailable] = useState<boolean | null>(null);
+  const [stage, setStage] = useState<'idle' | 'transcribing' | 'interpreting'>('idle');
+  const [heardText, setHeardText] = useState('');
   const [result, setResult] = useState<VoiceCommandResultDto | null>(null);
   const [error, setError] = useState('');
-  const transcriptRef = useRef<HTMLDivElement>(null);
-  // Set when the engine has been running a while and produced nothing. The
-  // commonest cause is the wrong input device, and silence is the one state
-  // a voice UI must not present as normal.
-  const [heardNothing, setHeardNothing] = useState(false);
 
-  // Keep the newest words in view as they arrive, the way a dictation box
-  // on a phone does.
+  // Whether this deployment has a transcription key at all. Asked once, and
+  // the whole bar stays hidden if not: an offer that cannot work is worse
+  // than no offer.
   useEffect(() => {
-    const box = transcriptRef.current;
-    if (box) box.scrollTop = box.scrollHeight;
-  }, [speech.transcript, speech.interim]);
+    let live = true;
+    ComposeApi.voiceAvailable()
+      .then((r) => live && setAvailable(r.available))
+      .catch(() => live && setAvailable(false));
+    return () => {
+      live = false;
+    };
+  }, []);
 
-  // Six seconds of a running recogniser with nothing to show for it is not
-  // a slow start, it is a microphone that is not reaching Chrome.
-  useEffect(() => {
-    if (!speech.listening) {
-      setHeardNothing(false);
+  if (!recorder.supported || available === false) return null;
+
+  async function finish() {
+    const clip = await recorder.stop();
+    if (!clip || clip.size < 1200) {
+      setError("That was too short to make anything of. Hold the button while you talk.");
       return;
     }
-    if (speech.transcript || speech.interim) {
-      setHeardNothing(false);
-      return;
-    }
-    const timer = window.setTimeout(() => setHeardNothing(true), 6000);
-    return () => window.clearTimeout(timer);
-  }, [speech.listening, speech.transcript, speech.interim]);
-
-  // Nothing to offer where the browser has no recognition at all. Firefox
-  // users get the normal form, which has always worked.
-  if (!speech.supported) return null;
-
-  async function interpret() {
-    speech.stop();
-    const text = speech.transcript.trim();
-    if (!text) {
-      setError("Didn't catch anything. Try again, a little closer to the mic.");
-      return;
-    }
-    setThinking(true);
     setError('');
+    setHeardText('');
+    setResult(null);
+    setStage('transcribing');
     try {
+      const { text } = await ComposeApi.transcribe(clip);
+      setHeardText(text);
+      setStage('interpreting');
       const parsed = await ComposeApi.voiceCommand(text);
       setResult(parsed);
       if (!parsed.instruction) {
@@ -82,70 +76,75 @@ export function VoiceCommandBar({
         onFilled({ subject: parsed.subject ?? undefined, instruction: parsed.instruction });
       }
     } catch (err) {
-      setError(errorMessage(err, 'Could not interpret that. Try again, or type it instead.'));
+      setError(errorMessage(err, 'Could not turn that into text. Try again, or type it instead.'));
     } finally {
-      setThinking(false);
+      setStage('idle');
     }
   }
 
   function choose(contact: ContactDto) {
     if (!result?.instruction) return;
-    onFilled({
-      toAddress: contact.email,
-      subject: result.subject ?? undefined,
-      instruction: result.instruction,
-    });
+    onFilled({ toAddress: contact.email, subject: result.subject ?? undefined, instruction: result.instruction });
     setResult(null);
   }
 
-  const listening = speech.listening;
-  const hasWords = Boolean(speech.transcript || speech.interim);
+  const busy = stage !== 'idle';
+  const recording = recorder.recording;
 
   return (
     <div
       className={cn(
         'rounded-xl border p-3 transition-colors',
-        listening ? 'border-accent-400/40 bg-accent-500/[0.06]' : 'border-white/[0.07] bg-white/[0.02]'
+        recording ? 'border-accent-400/40 bg-accent-500/[0.06]' : 'border-white/[0.07] bg-white/[0.02]'
       )}
     >
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
-          onClick={listening ? interpret : speech.start}
-          disabled={disabled || thinking}
-          aria-pressed={listening}
+          onClick={recording ? finish : recorder.start}
+          disabled={disabled || busy || recorder.starting}
+          aria-pressed={recording}
           className={cn(
             'relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition',
-            listening
+            recording
               ? 'bg-rose-500 text-white'
               : 'bg-accent-500 text-on-accent hover:bg-accent-400 disabled:opacity-40'
           )}
         >
           {/* A halo that breathes with the voice rather than on a timer, so
-              it stays still when the mic is not picking anything up. */}
-          {listening && (
+              it stays still when the microphone is picking nothing up. */}
+          {recording && (
             <span
               aria-hidden="true"
               className="absolute inset-0 rounded-full bg-rose-500/30 transition-transform duration-100 ease-out motion-reduce:hidden"
-              style={{ transform: `scale(${1 + speech.level * 0.75})` }}
+              style={{ transform: `scale(${1 + recorder.level * 0.75})` }}
             />
           )}
           <MicIcon className="relative h-4 w-4" />
-          <span className="sr-only">{listening ? 'Stop and interpret' : 'Speak an instruction'}</span>
+          <span className="sr-only">{recording ? 'Stop and transcribe' : 'Speak an instruction'}</span>
         </button>
 
         <div className="min-w-0 flex-1">
-          {thinking ? (
+          {stage === 'transcribing' ? (
+            <span className="flex items-center gap-2 text-sm text-white/60">
+              <SparklesIcon className="h-3.5 w-3.5 animate-pulse text-accent-400" />
+              Turning that into words…
+            </span>
+          ) : stage === 'interpreting' ? (
             <span className="flex items-center gap-2 text-sm text-white/60">
               <SparklesIcon className="h-3.5 w-3.5 animate-pulse text-accent-400" />
               Working out what you meant…
             </span>
-          ) : speech.starting ? (
-            <span className="text-sm text-white/50">Starting the microphone…</span>
-          ) : listening ? (
+          ) : recorder.starting ? (
+            <span className="text-sm text-white/50">Opening the microphone…</span>
+          ) : recording ? (
             <span className="flex items-center gap-2.5 text-sm text-rose-200/80">
-              <VoiceWave level={speech.level} className="text-rose-300" />
-              {hasWords ? 'Listening…' : 'Go ahead — say who it’s for and what it should say.'}
+              <VoiceWave level={recorder.level} className="text-rose-300" />
+              <span className="tabular-nums">
+                {String(Math.floor(recorder.seconds / 60)).padStart(2, '0')}:
+                {String(recorder.seconds % 60).padStart(2, '0')}
+              </span>
+              <span className="text-rose-200/50">— press Done when you finish</span>
             </span>
           ) : (
             <span className="block text-sm text-white/45">
@@ -154,11 +153,11 @@ export function VoiceCommandBar({
           )}
         </div>
 
-        {listening && (
+        {recording && (
           <div className="flex items-center gap-3">
             <button
               type="button"
-              onClick={interpret}
+              onClick={finish}
               className="rounded-lg bg-white/[0.08] px-3 py-1.5 text-xs font-semibold text-white/85 transition hover:bg-white/[0.14]"
             >
               Done
@@ -166,7 +165,7 @@ export function VoiceCommandBar({
             <button
               type="button"
               onClick={() => {
-                speech.stop();
+                recorder.cancel();
                 setResult(null);
               }}
               className="text-xs font-medium text-white/40 transition hover:text-white/70"
@@ -177,18 +176,10 @@ export function VoiceCommandBar({
         )}
       </div>
 
-      {/* The live transcript. Settled words in full strength, the current
-          guess faint behind them, because the guess will change and watching
-          it rewrite itself is how you know it is still listening. */}
-      {listening && hasWords && (
-        <div
-          ref={transcriptRef}
-          className="mt-3 max-h-24 overflow-y-auto scrollbar-thin rounded-lg bg-black/20 px-3 py-2 text-sm leading-relaxed"
-          aria-live="polite"
-        >
-          <span className="text-white/85">{speech.transcript}</span>
-          {speech.interim && <span className="text-white/35"> {speech.interim}</span>}
-        </div>
+      {/* What it heard, kept visible so a wrong word is obvious before the
+          draft is generated from it. */}
+      {heardText && !recording && (
+        <div className="mt-3 rounded-lg bg-black/20 px-3 py-2 text-sm leading-relaxed text-white/80">{heardText}</div>
       )}
 
       {/* The confirmation. A name out of a transcript never fills the To
@@ -239,22 +230,9 @@ export function VoiceCommandBar({
         </p>
       )}
 
-      {result && !result.confident && result.instruction && (
-        <p className="mt-2 text-xs text-white/40">That was hard to make out — check the wording before you generate.</p>
-      )}
-
-      {heardNothing && (
+      {(error || recorder.error) && (
         <div className="mt-3">
-          <Alert tone="warning">
-            Nothing is coming through. Check that the right microphone is selected in Chrome — click the padlock
-            beside the address bar, then Microphone — and that it isn't muted.
-          </Alert>
-        </div>
-      )}
-
-      {(error || speech.error) && (
-        <div className="mt-3">
-          <Alert tone="danger">{error || speech.error}</Alert>
+          <Alert tone="danger">{error || recorder.error}</Alert>
         </div>
       )}
     </div>

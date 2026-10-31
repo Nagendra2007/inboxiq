@@ -124,6 +124,23 @@ export const EmailApi = {
 
 // --- Compose (brand-new email, not a reply) ---
 export const ComposeApi = {
+  /** Uploads a recorded clip and gets the words back. */
+  transcribe: (audio: Blob) => {
+    const form = new FormData();
+    // The extension is how Whisper picks its decoder, so it has to follow
+    // whatever MediaRecorder actually produced.
+    const ext = audio.type.includes('mp4') ? 'mp4' : 'webm';
+    form.append('audio', audio, `clip.${ext}`);
+    return apiFetch<{ text: string }>('/api/compose/transcribe', {
+      method: 'POST',
+      body: form,
+      timeoutMs: LONG_TIMEOUT_MS,
+    });
+  },
+
+  /** Whether this deployment has transcription configured at all. */
+  voiceAvailable: () => apiFetch<{ available: boolean }>('/api/compose/voice-available'),
+
   /**
    * Splits one spoken instruction into the composer's fields. Answers with
    * what it understood, including candidate recipients — it never drafts and
