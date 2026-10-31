@@ -38,13 +38,13 @@ public class MailAccount {
     @Column(nullable = false)
     private MailProvider provider = MailProvider.GOOGLE;
 
-    @Column(name = "provider_email", nullable = false)
+    @Column(name = "provider_email", nullable = false, length = 320)
     private String providerEmail;
 
-    @Column(name = "encrypted_access_token")
+    @Column(name = "encrypted_access_token", columnDefinition = "text")
     private String encryptedAccessToken;
 
-    @Column(name = "encrypted_refresh_token")
+    @Column(name = "encrypted_refresh_token", columnDefinition = "text")
     private String encryptedRefreshToken;
 
     @Column(name = "token_expiry")
@@ -55,7 +55,7 @@ public class MailAccount {
      * advanced after a sync pass has applied every change up to it, so a pass
      * that stops halfway is simply redone from the same point next time.
      */
-    @Column(name = "last_history_id")
+    @Column(name = "last_history_id", length = 64)
     private String lastHistoryId;
 
     /** When the first (newest-N) sync finished. Null until then. */

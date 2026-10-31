@@ -46,20 +46,20 @@ public class GeneratedReply {
     private EmailMessage email;
 
     /** Recipient address, only meaningfully used for compose drafts (a reply's recipient comes from the source email). */
-    @Column(name = "to_address")
+    @Column(name = "to_address", length = 320)
     private String toAddress;
 
     /** Subject line, only meaningfully used for compose drafts. */
-    @Column(name = "draft_subject")
+    @Column(name = "draft_subject", length = 998)
     private String draftSubject;
 
     @Column(name = "user_prompt", nullable = false, length = 1000)
     private String userPrompt;
 
-    @Column(name = "generated_content", nullable = false)
+    @Column(name = "generated_content", nullable = false, columnDefinition = "text")
     private String generatedContent;
 
-    @Column(name = "tone_adjustment")
+    @Column(name = "tone_adjustment", length = 32)
     private String toneAdjustment;
 
     @Column(name = "sent", nullable = false)
@@ -68,7 +68,7 @@ public class GeneratedReply {
     @Column(name = "sent_at")
     private Instant sentAt;
 
-    @Column(name = "gmail_message_id")
+    @Column(name = "gmail_message_id", length = 128)
     private String gmailMessageId;
 
     @CreationTimestamp

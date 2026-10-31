@@ -37,11 +37,11 @@ public class EmailAnalysis {
     @OnDelete(action = OnDeleteAction.CASCADE) // matches the ON DELETE CASCADE in V1__init_schema.sql
     private EmailMessage email;
 
-    @Column(name = "summary")
+    @Column(name = "summary", columnDefinition = "text")
     private String summary;
 
     /** JSON array of short bullet strings, e.g. ["Exams begin Sept 21", ...]. */
-    @Column(name = "key_points")
+    @Column(name = "key_points", columnDefinition = "text")
     private String keyPointsJson;
 
     @Enumerated(EnumType.STRING)
@@ -63,7 +63,7 @@ public class EmailAnalysis {
     private RiskLevel riskLevel;
 
     /** JSON array of short human-readable reasons behind the risk score. */
-    @Column(name = "risk_reasons")
+    @Column(name = "risk_reasons", columnDefinition = "text")
     private String riskReasonsJson;
 
     @Column(name = "requires_reply")
@@ -73,17 +73,17 @@ public class EmailAnalysis {
     private Boolean actionRequired;
 
     /** JSON array of ISO-8601 date strings mentioned in the email. */
-    @Column(name = "important_dates")
+    @Column(name = "important_dates", columnDefinition = "text")
     private String importantDatesJson;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "analysis_status", nullable = false)
     private AnalysisStatus analysisStatus = AnalysisStatus.PENDING;
 
-    @Column(name = "failure_reason")
+    @Column(name = "failure_reason", columnDefinition = "text")
     private String failureReason;
 
-    @Column(name = "ai_model_used")
+    @Column(name = "ai_model_used", length = 128)
     private String aiModelUsed;
 
     /** Times the AI has been asked to analyze this email (bounds automatic retries). */
