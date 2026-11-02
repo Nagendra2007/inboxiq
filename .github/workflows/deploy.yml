@@ -62,8 +62,27 @@ jobs:
   rollout:
     needs: image
     runs-on: ubuntu-latest
-    if: vars.EC2_HOST != ''
     steps:
+      # This job used to carry "if: vars.EC2_HOST != ''", which meant that
+      # a deployment with nothing configured was skipped — and a skipped
+      # job does not fail its run. Every merge went green for weeks while
+      # nothing was ever deployed, and the workflow said so nowhere.
+      #
+      # Refusing out loud is the whole point: a deploy that cannot deploy
+      # is a failure, not a no-op.
+      - name: Check the deploy is configured
+        run: |
+          missing=""
+          [ -n "${{ vars.EC2_HOST }}" ] || missing="$missing EC2_HOST(variable)"
+          [ -n "${{ vars.EC2_USER }}" ] || missing="$missing EC2_USER(variable)"
+          [ -n "${{ secrets.EC2_SSH_KEY }}" ] || missing="$missing EC2_SSH_KEY(secret)"
+          [ -n "${{ vars.MAILROOM_DOMAIN }}" ] || missing="$missing MAILROOM_DOMAIN(variable)"
+          if [ -n "$missing" ]; then
+            echo "::error::Nothing was deployed. Missing:$missing"
+            echo "Set them under Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
+
       - name: Pull and restart on the instance
         env:
           IMAGE: ${{ needs.image.outputs.image }}:${{ github.sha }}
@@ -74,14 +93,36 @@ jobs:
           ssh-keyscan -H "${{ vars.EC2_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
           # Pin the exact image rather than :latest, so a rollback is just
           # re-running an older commit's deploy.
+          #
+          # --force-recreate because "up -d" does nothing when it believes
+          # nothing changed, and it believes that whenever the compose file
+          # names a moving tag instead of the one passed here.
           ssh -i ~/.ssh/deploy "${{ vars.EC2_USER }}@${{ vars.EC2_HOST }}" \
             "cd /opt/mailroom \
              && MAILROOM_IMAGE=$IMAGE docker compose pull app \
-             && MAILROOM_IMAGE=$IMAGE docker compose up -d --no-deps app \
+             && MAILROOM_IMAGE=$IMAGE docker compose up -d --no-deps --force-recreate app \
              && docker image prune -f"
 
+      # The health check below proves that something is answering, not that
+      # it is the something we just built — and the old container answers it
+      # perfectly well. Together with a job that skipped itself in silence,
+      # that is how a green deploy came to mean nothing at all.
+      - name: Check the running container is the one we built
+        env:
+          IMAGE: ${{ needs.image.outputs.image }}:${{ github.sha }}
+        run: |
+          running=$(ssh -i ~/.ssh/deploy "${{ vars.EC2_USER }}@${{ vars.EC2_HOST }}" \
+            'cd /opt/mailroom && docker inspect $(docker compose ps -q app) --format "{{.Config.Image}}"')
+          echo "running: $running"
+          echo "built:   $IMAGE"
+          if [ "$running" != "$IMAGE" ]; then
+            echo "::error::The deploy did not take - the container is running $running"
+            echo "Check that /opt/mailroom/docker-compose.yml resolves its image from"
+            echo "\${MAILROOM_IMAGE}, and that the instance can pull from ghcr.io."
+            exit 1
+          fi
+
       - name: Wait for it to answer
-        if: vars.MAILROOM_DOMAIN != ''
         run: |
           for i in $(seq 1 30); do
             code=$(curl -sS -o /dev/null -w "%{http_code}" -m 20 "https://${{ vars.MAILROOM_DOMAIN }}/actuator/health") || code=000
