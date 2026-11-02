@@ -4,6 +4,8 @@ import com.mailroom.entity.EmailAnalysis;
 import com.mailroom.entity.EmailMessage;
 import com.mailroom.entity.RiskLevel;
 import com.mailroom.repository.EmailRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,6 +26,8 @@ import java.util.UUID;
 @Service
 public class MailNotificationService {
 
+    private static final Logger log = LoggerFactory.getLogger(MailNotificationService.class);
+
     private final PushNotificationService push;
     private final DeviceNotificationService devices;
     private final EmailRepository emails;
@@ -41,13 +45,26 @@ public class MailNotificationService {
         // Browsers and the Android app are separate channels, and a person
         // may have one, both or neither. The decision below is shared; only
         // the delivery differs.
-        if (userId == null || (!push.isEnabled() && !devices.isEnabled())) return;
+        // Every path out of this method is silent by nature — a
+        // notification that is never sent looks exactly like one that was
+        // sent and not delivered. Saying which branch was taken is the
+        // difference between diagnosing that in a minute and in a day.
+        if (userId == null || (!push.isEnabled() && !devices.isEnabled())) {
+            log.debug("No notification for email id={}: no channel is configured", emailId);
+            return;
+        }
 
         EmailMessage email = emails.findById(emailId).orElse(null);
-        if (email == null || email.isRead() || email.isArchived()) return;
+        if (email == null || email.isRead() || email.isArchived()) {
+            log.debug("No notification for email id={}: already gone, read or archived", emailId);
+            return;
+        }
 
         EmailAnalysis analysis = email.getAnalysis();
-        if (analysis == null) return;
+        if (analysis == null) {
+            log.debug("No notification for email id={}: it has no analysis", emailId);
+            return;
+        }
 
         String otp = analysis.getOtpCode();
         boolean risky = analysis.getRiskLevel() == RiskLevel.HIGH;
@@ -60,6 +77,7 @@ public class MailNotificationService {
             // into something and get on with their day, so it goes in the
             // title where a phone shows it largest, and the sender — which
             // is context, not the point — goes underneath.
+            log.info("Notifying about a one-time code in email id={}", emailId);
             push.notifyUser(userId, otp, "Code from " + from, url, "otp-" + emailId);
             devices.notifyOtp(userId, otp, from, url);
             return;
@@ -70,6 +88,8 @@ public class MailNotificationService {
         // Tagging by email id means a re-analysis replaces the earlier
         // notification instead of showing the same mail twice.
         String title = risky ? "Possible scam: " + from : from;
+        log.info("Notifying about email id={} (browser={}, app={})",
+                emailId, push.isEnabled(), devices.isEnabled());
         push.notifyUser(userId, title, body, url, "email-" + emailId);
         devices.notifyUser(userId, title, body, url);
     }
