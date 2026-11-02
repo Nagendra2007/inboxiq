@@ -4,10 +4,14 @@ import com.mailroom.ai.FcmClient;
 import com.mailroom.entity.DeviceToken;
 import com.mailroom.entity.User;
 import com.mailroom.repository.DeviceTokenRepository;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Instant;
 import java.util.List;
@@ -29,10 +33,15 @@ public class DeviceNotificationService {
 
     private final DeviceTokenRepository tokens;
     private final FcmClient fcm;
+    /** Runs the second attempt in its own transaction; see {@link #register}. */
+    private final TransactionTemplate retry;
 
-    public DeviceNotificationService(DeviceTokenRepository tokens, FcmClient fcm) {
+    public DeviceNotificationService(DeviceTokenRepository tokens, FcmClient fcm,
+                                     PlatformTransactionManager transactionManager) {
         this.tokens = tokens;
         this.fcm = fcm;
+        this.retry = new TransactionTemplate(transactionManager);
+        this.retry.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
     public boolean isEnabled() {
@@ -88,14 +97,37 @@ public class DeviceNotificationService {
         }
     }
 
-    /** Registers or refreshes one installation. Google reissues tokens freely. */
+    /**
+     * Registers or refreshes one installation. Google reissues tokens
+     * freely, and the app re-offers the same one on every page load, so
+     * this is called far more often than it does anything.
+     *
+     * <p>Two of those calls can overlap — the app registers both when a
+     * page finishes loading and when it comes back to the foreground, and
+     * those happen within milliseconds of each other on launch. Both then
+     * find no row and both insert, and the unique index on the token means
+     * one of them loses. Registering a device that is already registered
+     * is not an error, so the loser re-reads and updates the row the
+     * winner just wrote.
+     */
     @Transactional
     public void register(User user, String token, String platform) {
+        try {
+            save(user, token, platform);
+        } catch (DataIntegrityViolationException e) {
+            // The row now exists because somebody else wrote it. Starting a
+            // new transaction matters: this one is marked rollback-only.
+            log.debug("Device registration raced with another; updating the existing row");
+            retry.executeWithoutResult(status -> save(user, token, platform));
+        }
+    }
+
+    private void save(User user, String token, String platform) {
         DeviceToken row = tokens.findByToken(token).orElseGet(DeviceToken::new);
         row.setUser(user);
         row.setToken(token);
         row.setPlatform(platform == null || platform.isBlank() ? "android" : platform);
-        tokens.save(row);
+        tokens.saveAndFlush(row);
     }
 
     @Transactional
