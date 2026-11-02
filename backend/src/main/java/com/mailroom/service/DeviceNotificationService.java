@@ -54,7 +54,7 @@ public class DeviceNotificationService {
         if (!isEnabled()) return;
         List<DeviceToken> devices = tokens.findByUserId(userId);
         if (devices.isEmpty()) {
-            log.debug("Nothing to notify: no app is registered for this account");
+            log.info("Nothing to notify: no app is registered for this account");
             return;
         }
         for (DeviceToken device : devices) {

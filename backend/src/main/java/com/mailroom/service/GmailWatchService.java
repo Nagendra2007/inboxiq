@@ -8,6 +8,8 @@ import com.mailroom.gmail.GmailInboxClient;
 import com.mailroom.repository.MailAccountRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -58,6 +60,24 @@ public class GmailWatchService {
         this.appProperties = appProperties;
     }
 
+    /**
+     * Says once, at startup, whether instant delivery is on.
+     *
+     * <p>Without a topic this service does nothing and says nothing, and
+     * the product still works — the poll finds the mail eventually — so a
+     * deployment can run for weeks with push quietly off and the only
+     * symptom being that nothing feels instant. Worth one line.
+     */
+    @EventListener(ApplicationReadyEvent.class)
+    public void reportConfiguration() {
+        if (isEnabled()) {
+            log.info("Gmail push is on, publishing to {}", appProperties.getGmail().getPushTopic());
+        } else {
+            log.warn("Gmail push is off: no push topic is configured. New mail will only "
+                    + "appear when a sync runs, not when it arrives.");
+        }
+    }
+
     public boolean isEnabled() {
         String topic = appProperties.getGmail().getPushTopic();
         return topic != null && !topic.isBlank();
@@ -91,7 +111,12 @@ public class GmailWatchService {
         Instant cutoff = Instant.now().plus(RENEW_BEFORE);
         List<MailAccount> due = mailAccountRepository
                 .findWatchesDueForRenewal(MailProvider.GOOGLE, cutoff);
-        if (due.isEmpty()) return;
+        if (due.isEmpty()) {
+            // Said out loud so that "no renewal lines in the log" stops
+            // being ambiguous between a healthy watch and a dead service.
+            log.debug("Gmail watch renewal: nothing due before {}", cutoff);
+            return;
+        }
         int ok = 0;
         for (MailAccount account : due) {
             if (register(account)) ok++;

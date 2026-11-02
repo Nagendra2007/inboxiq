@@ -50,19 +50,19 @@ public class MailNotificationService {
         // sent and not delivered. Saying which branch was taken is the
         // difference between diagnosing that in a minute and in a day.
         if (userId == null || (!push.isEnabled() && !devices.isEnabled())) {
-            log.debug("No notification for email id={}: no channel is configured", emailId);
+            log.info("No notification for email id={}: no channel is configured", emailId);
             return;
         }
 
         EmailMessage email = emails.findById(emailId).orElse(null);
         if (email == null || email.isRead() || email.isArchived()) {
-            log.debug("No notification for email id={}: already gone, read or archived", emailId);
+            log.info("No notification for email id={}: already read, archived or gone", emailId);
             return;
         }
 
         EmailAnalysis analysis = email.getAnalysis();
         if (analysis == null) {
-            log.debug("No notification for email id={}: it has no analysis", emailId);
+            log.info("No notification for email id={}: it has no analysis yet", emailId);
             return;
         }
 
@@ -78,8 +78,8 @@ public class MailNotificationService {
             // title where a phone shows it largest, and the sender — which
             // is context, not the point — goes underneath.
             log.info("Notifying about a one-time code in email id={}", emailId);
-            push.notifyUser(userId, otp, "Code from " + from, url, "otp-" + emailId);
-            devices.notifyOtp(userId, otp, from, url);
+            attempt("browser", () -> push.notifyUser(userId, otp, "Code from " + from, url, "otp-" + emailId));
+            attempt("app", () -> devices.notifyOtp(userId, otp, from, url));
             return;
         }
 
@@ -90,8 +90,26 @@ public class MailNotificationService {
         String title = risky ? "Possible scam: " + from : from;
         log.info("Notifying about email id={} (browser={}, app={})",
                 emailId, push.isEnabled(), devices.isEnabled());
-        push.notifyUser(userId, title, body, url, "email-" + emailId);
-        devices.notifyUser(userId, title, body, url);
+        attempt("browser", () -> push.notifyUser(userId, title, body, url, "email-" + emailId));
+        attempt("app", () -> devices.notifyUser(userId, title, body, url));
+    }
+
+    /**
+     * Runs one channel's delivery, and keeps its failure to itself.
+     *
+     * <p>These were called one after the other, with the only handler
+     * around both of them in the caller. A browser subscription that threw
+     * on its way out therefore took the phone's notification with it —
+     * silently, since the caller logs the failure as one notification that
+     * did not go out rather than two. The whole point of having two
+     * channels is that they fail separately.
+     */
+    private void attempt(String channel, Runnable delivery) {
+        try {
+            delivery.run();
+        } catch (RuntimeException e) {
+            log.warn("The {} notification failed: {}", channel, e.toString());
+        }
     }
 
     /**

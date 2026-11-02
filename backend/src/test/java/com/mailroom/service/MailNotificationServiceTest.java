@@ -142,6 +142,30 @@ class MailNotificationServiceTest {
     }
 
     @Test
+    void aFailingBrowserNotificationStillReachesThePhone() {
+        UUID id = given(mail("a@b.io", "Hello", analysis("Something happened", null)));
+        org.mockito.Mockito.doThrow(new IllegalStateException("subscription is rubbish"))
+                .when(push).notifyUser(any(), any(), any(), any(), any());
+
+        service.notifyIfNoteworthy(USER, id);
+
+        // The two channels exist so that one of them going wrong is not the
+        // same as having no notifications at all.
+        verify(devices).notifyUser(eq(USER), any(), eq("Something happened"), any());
+    }
+
+    @Test
+    void aFailingPhoneNotificationStillReachesTheBrowser() {
+        UUID id = given(mail("a@b.io", "Hello", analysis("Something happened", null)));
+        org.mockito.Mockito.doThrow(new IllegalStateException("firebase is down"))
+                .when(devices).notifyUser(any(), any(), any(), any());
+
+        service.notifyIfNoteworthy(USER, id);
+
+        verify(push).notifyUser(eq(USER), any(), eq("Something happened"), any(), any());
+    }
+
+    @Test
     void mailAlreadyReadDoesNotNotify() {
         EmailMessage email = mail("a@b.io", "Hello", analysis("Something", null));
         email.setRead(true);
