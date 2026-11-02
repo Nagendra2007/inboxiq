@@ -50,19 +50,19 @@ public class MailNotificationService {
         // sent and not delivered. Saying which branch was taken is the
         // difference between diagnosing that in a minute and in a day.
         if (userId == null || (!push.isEnabled() && !devices.isEnabled())) {
-            log.debug("No notification for email id={}: no channel is configured", emailId);
+            log.info("No notification for email id={}: no channel is configured", emailId);
             return;
         }
 
         EmailMessage email = emails.findById(emailId).orElse(null);
         if (email == null || email.isRead() || email.isArchived()) {
-            log.debug("No notification for email id={}: already gone, read or archived", emailId);
+            log.info("No notification for email id={}: already read, archived or gone", emailId);
             return;
         }
 
         EmailAnalysis analysis = email.getAnalysis();
         if (analysis == null) {
-            log.debug("No notification for email id={}: it has no analysis", emailId);
+            log.info("No notification for email id={}: it has no analysis yet", emailId);
             return;
         }
 
