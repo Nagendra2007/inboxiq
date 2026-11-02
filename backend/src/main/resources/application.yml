@@ -180,6 +180,13 @@ app:
   # the browsers push services; generate one with
   #   npx web-push generate-vapid-keys
   # Blank disables notifications rather than failing at the user.
+
+  # Firebase Cloud Messaging, for the Android app. A WebView cannot receive
+  # web push, so the app gets its own channel. The service account JSON goes
+  # in whole, as one value. Blank disables it.
+  fcm:
+    project-id: ${FCM_PROJECT_ID:}
+    service-account-json: ${FCM_SERVICE_ACCOUNT_JSON:}
   push:
     public-key: ${VAPID_PUBLIC_KEY:}
     private-key: ${VAPID_PRIVATE_KEY:}

@@ -16,6 +16,9 @@ public record EmailAnalysisAiResult(
         int riskScore,
         String riskLevel,
         List<String> riskReasons,
+        /** A one-time code to type in somewhere, or null. Verified against the
+         *  email text before use, because a model can invent a plausible one. */
+        String otpCode,
         boolean requiresReply,
         boolean actionRequired,
         List<ActionItemAiResult> actionItems,

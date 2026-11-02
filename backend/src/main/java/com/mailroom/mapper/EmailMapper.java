@@ -91,6 +91,7 @@ public class EmailMapper {
                 analysis.getRiskScore(),
                 analysis.getRiskLevel() == null ? null : analysis.getRiskLevel().name(),
                 readStringList(analysis.getRiskReasonsJson()),
+                analysis.getOtpCode(),
                 analysis.getRequiresReply(),
                 analysis.getActionRequired(),
                 readStringList(analysis.getImportantDatesJson()),

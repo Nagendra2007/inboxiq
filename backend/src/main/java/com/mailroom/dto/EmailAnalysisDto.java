@@ -16,6 +16,8 @@ public record EmailAnalysisDto(
         Integer riskScore,
         String riskLevel,
         List<String> riskReasons,
+        /** A one-time code the email wants typed in, or null. */
+        String otpCode,
         Boolean requiresReply,
         Boolean actionRequired,
         List<String> importantDates,

@@ -159,10 +159,33 @@ public class EmailAnalysisService {
         }
     }
 
+    /**
+     * The model's one-time code, but only if it is really there.
+     *
+     * <p>A language model asked for a six-digit code will sometimes produce
+     * six plausible digits rather than admit there were none, and a wrong
+     * code shown beside a Copy button gets pasted before anyone reads it.
+     * So the answer has to appear verbatim in the email it came from. That
+     * check costs nothing and makes invention impossible — the model is
+     * trusted to decide <em>which</em> number is the code, never to supply
+     * the digits.
+     */
+    static String verifiedOtp(String candidate, String subject, String body) {
+        if (candidate == null) return null;
+        String code = candidate.trim();
+        // Longer than this is not something anyone types in from a phone,
+        // and the column would truncate it anyway.
+        if (code.isEmpty() || code.length() > 16) return null;
+        boolean present = (subject != null && subject.contains(code))
+                || (body != null && body.contains(code));
+        return present ? code : null;
+    }
+
     private void applyAiResult(EmailAnalysis analysis, EmailAnalysisAiResult ai, RiskRuleEngine.Result ruleRisk,
                                 String subject, String bodyForAnalysis) {
         analysis.setSummary(ai.summary());
         analysis.setKeyPointsJson(toJson(ai.keyPoints()));
+        analysis.setOtpCode(verifiedOtp(ai.otpCode(), subject, bodyForAnalysis));
         EmailCategory category = safeCategory(ai.category());
         analysis.setCategory(category);
 

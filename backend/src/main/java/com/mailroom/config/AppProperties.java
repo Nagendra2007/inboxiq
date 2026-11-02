@@ -19,6 +19,7 @@ public class AppProperties {
     private final Sync sync = new Sync();
     private final RateLimit rateLimit = new RateLimit();
     private final Push push = new Push();
+    private final Fcm fcm = new Fcm();
     /**
      * Comma-separated Google account emails allowed to change app-wide
      * settings (the AI provider). When empty, the first account created on
@@ -36,6 +37,23 @@ public class AppProperties {
     public Sync getSync() { return sync; }
     public RateLimit getRateLimit() { return rateLimit; }
     public Push getPush() { return push; }
+    public Fcm getFcm() { return fcm; }
+
+    /**
+     * Firebase Cloud Messaging, for the Android app. A WebView cannot
+     * receive web push, so the app needs its own channel. Blank disables
+     * it, same as everything else here.
+     */
+    public static class Fcm {
+        private String projectId;
+        // The whole service account JSON, as one string.
+        private String serviceAccountJson;
+
+        public String getProjectId() { return projectId; }
+        public void setProjectId(String projectId) { this.projectId = projectId; }
+        public String getServiceAccountJson() { return serviceAccountJson; }
+        public void setServiceAccountJson(String serviceAccountJson) { this.serviceAccountJson = serviceAccountJson; }
+    }
 
     /**
      * Browser push notifications. A VAPID key pair identifies this server

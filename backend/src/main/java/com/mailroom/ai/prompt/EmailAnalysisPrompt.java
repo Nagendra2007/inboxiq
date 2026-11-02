@@ -32,6 +32,7 @@ public final class EmailAnalysisPrompt {
                   "riskScore": integer 0-100, higher means more likely to be a scam, phishing, or otherwise suspicious,
                   "riskLevel": one of LOW, MEDIUM, HIGH,
                   "riskReasons": string[] (short reasons behind the risk score; empty array if none apply),
+                  "otpCode": string or null — a one-time code the reader is meant to type in somewhere: a verification code, OTP, 2FA code, login or confirmation code. Copy it EXACTLY as it appears, character for character. Null unless you are certain: an order number, invoice number, tracking number, reference, account number, price, date or year is NOT a one-time code, and neither is a discount or coupon code. Never reconstruct, correct or invent one — if you cannot see it verbatim in the text, return null.
                   "requiresReply": boolean,
                   "actionRequired": boolean,
                   "actionItems": [ { "description": string, "deadline": "YYYY-MM-DD" or null } ],
