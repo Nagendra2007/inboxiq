@@ -90,6 +90,14 @@ public class EmailAnalysis {
     @Column(name = "otp_code", length = 16)
     private String otpCode;
 
+    /**
+     * What a notification should say about this email, written by the
+     * analysis for a lock screen rather than cut down from the summary.
+     * Null when the model omitted it; the summary stands in.
+     */
+    @Column(name = "notification_text", length = 160)
+    private String notificationText;
+
     @Column(name = "ai_model_used", length = 128)
     private String aiModelUsed;
 

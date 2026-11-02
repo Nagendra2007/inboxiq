@@ -185,6 +185,7 @@ public class EmailAnalysisService {
                                 String subject, String bodyForAnalysis) {
         analysis.setSummary(ai.summary());
         analysis.setKeyPointsJson(toJson(ai.keyPoints()));
+        analysis.setNotificationText(truncate(ai.notificationText(), 160));
         analysis.setOtpCode(verifiedOtp(ai.otpCode(), subject, bodyForAnalysis));
         EmailCategory category = safeCategory(ai.category());
         analysis.setCategory(category);

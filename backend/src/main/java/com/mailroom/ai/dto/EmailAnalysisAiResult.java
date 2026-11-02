@@ -11,6 +11,8 @@ import java.util.List;
 public record EmailAnalysisAiResult(
         String summary,
         List<String> keyPoints,
+        /** One line written for a lock screen, or null to fall back to the summary. */
+        String notificationText,
         String category,
         String priorityHint,
         int riskScore,
