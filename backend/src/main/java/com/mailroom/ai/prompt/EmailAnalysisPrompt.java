@@ -27,6 +27,7 @@ public final class EmailAnalysisPrompt {
                 {
                   "summary": string (one plain-language sentence and 25 words at the very most; a second sentence only if the email really has two separate asks — the key points below carry the detail, so say what the email is and what it wants, and stop),
                   "keyPoints": string[] (short bullet phrases, at most 5),
+                  "notificationText": string (one line for a phone's lock screen, 12 words at the absolute most — what this email actually wants, phrased so someone glancing at it knows whether to pick the phone up. Do NOT name the sender; the notification already shows it. Do not start with "This email" or "The sender". Prefer the concrete detail over the abstraction: "Rent is due Friday, 14,500" beats "A payment reminder". For marketing and newsletters, say what is on offer in a few words rather than pretending it is urgent),
                   "category": one of PERSONAL, WORK, EDUCATION, FINANCE, SHOPPING, DELIVERY, SECURITY, SOCIAL, MARKETING, NEWSLETTER, SUSPICIOUS, OTHER,
                   "priorityHint": one of HIGH, MEDIUM, LOW — your best-guess priority; the application combines this with rule-based signals (sender, deadlines, keywords) to compute the final priority, so this is a hint, not the final answer,
                   "riskScore": integer 0-100, higher means more likely to be a scam, phishing, or otherwise suspicious,

@@ -59,6 +59,7 @@ public class AiResponseParser {
         return new EmailAnalysisAiResult(
                 text(node, "summary", "No summary available."),
                 keyPoints,
+                text(node, "notificationText", null),
                 safeEnum(text(node, "category", null), EmailCategory.class, EmailCategory.OTHER).name(),
                 safeEnum(text(node, "priorityHint", null), Priority.class, Priority.MEDIUM).name(),
                 clamp(intValue(node, "riskScore", 0), 0, 100),

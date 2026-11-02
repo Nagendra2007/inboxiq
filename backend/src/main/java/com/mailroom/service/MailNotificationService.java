@@ -2,7 +2,6 @@ package com.mailroom.service;
 
 import com.mailroom.entity.EmailAnalysis;
 import com.mailroom.entity.EmailMessage;
-import com.mailroom.entity.Priority;
 import com.mailroom.entity.RiskLevel;
 import com.mailroom.repository.EmailRepository;
 import org.springframework.stereotype.Service;
@@ -11,18 +10,16 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.UUID;
 
 /**
- * Decides which emails are worth a phone buzzing, and phrases them.
+ * Notifies about new mail, and decides what the notification says.
  *
- * <p>The decision matters more than the delivery. An app that notifies on
- * every email is a notification the user turns off in a week, and then it
- * notifies about nothing — so the bar is deliberately high: only mail the
- * analysis marked high priority, or flagged as a likely scam. Everything
- * else is waiting in the inbox when they look, which is the whole point of
- * the product.
+ * <p>Every unread email notifies. What stops that from being noise is not
+ * withholding the notification but what it contains: the analysis writes a
+ * line for the lock screen — what the email actually wants, in a dozen
+ * words — so the decision of whether to pick the phone up is made by
+ * reading, not by guessing from a sender and a subject line.
  *
- * <p>This runs after analysis rather than after sync, because before the
- * analysis exists there is no way to know whether an email deserves an
- * interruption.
+ * <p>This runs after analysis rather than after sync, because until the
+ * analysis exists there is nothing worth saying.
  */
 @Service
 public class MailNotificationService {
@@ -54,12 +51,6 @@ public class MailNotificationService {
 
         String otp = analysis.getOtpCode();
         boolean risky = analysis.getRiskLevel() == RiskLevel.HIGH;
-        boolean urgent = analysis.getPriority() == Priority.HIGH;
-
-        // A one-time code always goes through, whatever the priority. Codes
-        // expire in minutes, and the entire value of the notification is
-        // arriving before the code does not.
-        if (otp == null && !risky && !urgent) return;
 
         String from = senderName(email.getSender());
         String url = "/inbox?email=" + emailId;
@@ -74,16 +65,30 @@ public class MailNotificationService {
             return;
         }
 
-        String body = analysis.getSummary() != null && !analysis.getSummary().isBlank()
-                ? analysis.getSummary()
-                : (email.getSubject() == null || email.getSubject().isBlank()
-                        ? "(no subject)" : email.getSubject());
+        String body = notificationBody(analysis, email.getSubject());
 
         // Tagging by email id means a re-analysis replaces the earlier
         // notification instead of showing the same mail twice.
         String title = risky ? "Possible scam: " + from : from;
         push.notifyUser(userId, title, body, url, "email-" + emailId);
         devices.notifyUser(userId, title, body, url);
+    }
+
+    /**
+     * What the notification says, in descending order of how well it was
+     * written for the job: the analysis's own notification line, then the
+     * summary, then the subject. Each fallback is a step further from
+     * something a person can act on at a glance, which is why there are
+     * three of them rather than one.
+     */
+    private static String notificationBody(EmailAnalysis analysis, String subject) {
+        if (isUseful(analysis.getNotificationText())) return analysis.getNotificationText().trim();
+        if (isUseful(analysis.getSummary())) return analysis.getSummary().trim();
+        return isUseful(subject) ? subject.trim() : "(no subject)";
+    }
+
+    private static boolean isUseful(String text) {
+        return text != null && !text.isBlank();
     }
 
     /** {@code "Priya Shah" <priya@x.io>} down to what a notification has room for. */
