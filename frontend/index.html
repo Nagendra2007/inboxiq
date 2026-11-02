@@ -5,6 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="color-scheme" content="dark" />
     <meta name="theme-color" content="#08090e" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <!-- iOS ignores the manifest for these two, and web push on iOS only
+         works once the app has been added to the home screen. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Mailroom" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
     <script src="/assets/theme-init-v2.js"></script>
     <meta
       name="description"

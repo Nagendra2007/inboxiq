@@ -61,6 +61,7 @@ public class AnalysisQueue {
     private final EventStreamService events;
     private final EmailMapper emailMapper;
     private final AppProperties appProperties;
+    private final MailNotificationService mailNotificationService;
     private final ThreadPoolTaskExecutor executor;
     private final Set<UUID> inFlight = ConcurrentHashMap.newKeySet();
 
@@ -68,12 +69,14 @@ public class AnalysisQueue {
                          EmailAnalysisRepository emailAnalysisRepository,
                          EventStreamService events,
                          EmailMapper emailMapper,
-                         AppProperties appProperties) {
+                         AppProperties appProperties,
+                         MailNotificationService mailNotificationService) {
         this.emailAnalysisService = emailAnalysisService;
         this.emailAnalysisRepository = emailAnalysisRepository;
         this.events = events;
         this.emailMapper = emailMapper;
         this.appProperties = appProperties;
+        this.mailNotificationService = mailNotificationService;
 
         int threads = Math.max(1, appProperties.getAi().getAnalysisConcurrency());
         this.executor = new ThreadPoolTaskExecutor();
@@ -130,6 +133,16 @@ public class AnalysisQueue {
             boolean ok = analysis.getAnalysisStatus() == AnalysisStatus.COMPLETED;
             events.publish(userId, ok ? RealtimeEvent.ANALYSIS_COMPLETED : RealtimeEvent.ANALYSIS_FAILED,
                     payload(emailId, analysis));
+
+            // Only now is there enough information to know whether this is
+            // worth a phone buzzing. Never allowed to fail the analysis.
+            if (ok) {
+                try {
+                    mailNotificationService.notifyIfNoteworthy(userId, emailId);
+                } catch (RuntimeException e) {
+                    log.warn("Could not send a notification for email id={}: {}", emailId, e.getMessage());
+                }
+            }
         } catch (RuntimeException e) {
             log.error("Background analysis crashed for email id={}", emailId, e);
             EmailAnalysis failed = emailAnalysisService.recordUnexpectedFailure(emailId);

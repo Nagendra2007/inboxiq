@@ -136,6 +136,11 @@ public class SecurityConfig {
                     // built into the jar — see the root Dockerfile).
                     .requestMatchers(HttpMethod.GET, SPA_ROUTES).permitAll()
                     .requestMatchers(HttpMethod.GET, "/index.html", "/assets/**", "/favicon.svg", "/robots.txt").permitAll()
+                    // Installable-app files. The service worker and manifest
+                    // are fetched by the browser itself, outside any session
+                    // — a worker update in particular happens with no page
+                    // involved — so they cannot require authentication.
+                    .requestMatchers(HttpMethod.GET, "/sw.js", "/manifest.webmanifest", "/icon-*.png").permitAll()
                     .anyRequest().denyAll()
             )
             .exceptionHandling(ex -> ex

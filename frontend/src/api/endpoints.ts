@@ -197,3 +197,18 @@ export const ActionItemApi = {
   setCompleted: (id: string, completed: boolean) =>
     apiFetch<ActionItemDto>(`/api/action-items/${id}`, { method: 'PATCH', body: { completed } }),
 };
+
+// --- Browser notifications ---
+
+export const PushApi = {
+  config: () => apiFetch<{ enabled: boolean; publicKey: string | null }>('/api/push/config'),
+
+  subscribe: (body: { endpoint: string; p256dh: string; auth: string }) =>
+    apiFetch<{ subscribed: boolean }>('/api/push/subscribe', { method: 'POST', body }),
+
+  unsubscribe: (endpoint: string) =>
+    apiFetch<{ subscribed: boolean }>('/api/push/unsubscribe', { method: 'POST', body: { endpoint } }),
+
+  /** Sends one to this account, so the Settings toggle can prove it works. */
+  test: () => apiFetch<{ sent: boolean }>('/api/push/test', { method: 'POST' }),
+};
