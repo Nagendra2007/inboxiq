@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { PushApi } from '../api/endpoints';
+import { DevicesApi, PushApi } from '../api/endpoints';
 import { errorMessage } from '../api/client';
 import { currentPushState, disablePush, enablePush, type PushState } from '../lib/push';
 import { Button } from './ui/Button';
@@ -20,6 +20,7 @@ import { useToast } from './ui/Toast';
 export function NotificationsSection() {
   const toast = useToast();
   const [state, setState] = useState<PushState | null>(null);
+  const [appEnabled, setAppEnabled] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -28,6 +29,11 @@ export function NotificationsSection() {
     currentPushState()
       .then((s) => live && setState(s))
       .catch(() => live && setState('unsupported'));
+    // Separate channel, separate configuration: the Android app can be
+    // dead while the browser works, and vice versa.
+    DevicesApi.config()
+      .then(({ enabled }) => live && setAppEnabled(enabled))
+      .catch(() => live && setAppEnabled(false));
     return () => {
       live = false;
     };
@@ -64,31 +70,75 @@ export function NotificationsSection() {
     }
   }
 
+  async function sendAppTest() {
+    setBusy(true);
+    try {
+      await DevicesApi.test();
+      toast.success('Sent to your phone', 'If nothing arrives, the app has not registered itself.');
+    } catch (err) {
+      toast.error('Could not send', errorMessage(err, 'The server could not reach Firebase.'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const androidSection = (
+    <div className="space-y-2 border-t border-white/5 pt-4">
+      <p className="text-sm font-medium text-white/70">The Android app</p>
+      {appEnabled === null && <p className="text-xs text-white/40">Checking…</p>}
+      {appEnabled === false && (
+        <p className="text-sm leading-relaxed text-white/45">
+          Not set up on this deployment. The app's notifications go through Firebase, which needs{' '}
+          <span className="text-white/60">FCM_PROJECT_ID</span> and{' '}
+          <span className="text-white/60">FCM_SERVICE_ACCOUNT_JSON</span> in the server's configuration — separately
+          from the browser's VAPID keys above.
+        </p>
+      )}
+      {appEnabled === true && (
+        <>
+          <p className="text-sm leading-relaxed text-white/55">
+            Configured. A phone registers itself the first time you open the app signed in.
+          </p>
+          <Button onClick={sendAppTest} loading={busy} variant="ghost">
+            Send a test to my phone
+          </Button>
+        </>
+      )}
+    </div>
+  );
+
   if (state === null) return <p className="text-sm text-white/40">Checking…</p>;
 
   if (state === 'unsupported') {
     return (
-      <p className="text-sm leading-relaxed text-white/45">
-        This browser doesn't support notifications. On an iPhone, add Mailroom to your home screen first — iOS only
-        delivers them to an installed app.
-      </p>
+      <div className="space-y-4">
+        <p className="text-sm leading-relaxed text-white/45">
+          This browser doesn't support notifications. On an iPhone, add Mailroom to your home screen first — iOS only
+          delivers them to an installed app.
+        </p>
+        {androidSection}
+      </div>
     );
   }
 
   if (state === 'unconfigured') {
     return (
-      <p className="text-sm leading-relaxed text-white/45">
-        Notifications aren't set up on this deployment. They need a VAPID key pair in the server's configuration.
-      </p>
+      <div className="space-y-4">
+        <p className="text-sm leading-relaxed text-white/45">
+          Browser notifications aren't set up on this deployment. They need a VAPID key pair in the server's
+          configuration.
+        </p>
+        {androidSection}
+      </div>
     );
   }
 
   return (
     <div className="space-y-4">
       <p className="text-sm leading-relaxed text-white/55">
-        Mailroom will notify you about mail it marks <span className="text-white/80">high priority</span>, and anything
-        it flags as a <span className="text-white/80">possible scam</span>. Nothing else — an app that buzzes for every
-        email is one you turn off.
+        Mailroom notifies you about <span className="text-white/80">every email</span>, and the analysis writes the
+        line it shows — what the email actually wants, in a dozen words, so you can tell from the lock screen whether
+        it needs you. A <span className="text-white/80">one-time code</span> is shown large with a copy button.
       </p>
 
       <div className="flex flex-wrap items-center gap-3">
@@ -109,6 +159,8 @@ export function NotificationsSection() {
       )}
 
       {error && <Alert tone="warning">{error}</Alert>}
+
+      {androidSection}
     </div>
   );
 }
