@@ -212,3 +212,16 @@ export const PushApi = {
   /** Sends one to this account, so the Settings toggle can prove it works. */
   test: () => apiFetch<{ sent: boolean }>('/api/push/test', { method: 'POST' }),
 };
+
+/**
+ * The Android app's notifications, which are a separate channel with
+ * separate server configuration — a deployment can have one working and
+ * the other not, and until this was visible the only way to tell them
+ * apart was reading the server's logs.
+ */
+export const DevicesApi = {
+  config: () => apiFetch<{ enabled: boolean }>('/api/devices/config'),
+
+  /** Sends one to every phone signed in to this account. */
+  test: () => apiFetch<{ sent: boolean }>('/api/devices/test', { method: 'POST' }),
+};
