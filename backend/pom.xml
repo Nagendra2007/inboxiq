@@ -26,6 +26,9 @@
         <google-oauth-client.version>1.36.0</google-oauth-client.version>
         <gmail-api.version>v1-rev20220404-2.0.0</gmail-api.version>
         <jsoup.version>1.18.1</jsoup.version>
+        <webpush.version>5.1.2</webpush.version>
+        <bouncycastle.version>1.86</bouncycastle.version>
+        <jose4j.version>0.9.7</jose4j.version>
     </properties>
 
     <dependencies>
@@ -112,6 +115,30 @@
         </dependency>
 
         <!-- HTML sanitization (email bodies are untrusted HTML) -->
+        <!-- Web push: VAPID signing and payload encryption for browser
+             notifications. Pulls in BouncyCastle, which it needs for the
+             elliptic-curve work the Web Push spec requires. -->
+        <dependency>
+            <groupId>nl.martijndwars</groupId>
+            <artifactId>web-push</artifactId>
+            <version>${webpush.version}</version>
+        </dependency>
+
+        <!-- web-push needs this at runtime but does not declare it, so
+             the provider has to be supplied here or the first push fails
+             with a missing algorithm rather than a missing dependency. -->
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcprov-jdk18on</artifactId>
+            <version>${bouncycastle.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.bitbucket.b_c</groupId>
+            <artifactId>jose4j</artifactId>
+            <version>${jose4j.version}</version>
+        </dependency>
+
         <dependency>
             <groupId>org.jsoup</groupId>
             <artifactId>jsoup</artifactId>

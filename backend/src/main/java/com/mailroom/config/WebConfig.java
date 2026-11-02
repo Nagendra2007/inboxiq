@@ -1,5 +1,9 @@
 package com.mailroom.config;
 
+import org.springframework.boot.web.server.MimeMappings;
+import org.springframework.boot.web.server.WebServerFactoryCustomizer;
+import org.springframework.boot.web.servlet.server.ConfigurableServletWebServerFactory;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.CacheControl;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
@@ -14,6 +18,21 @@ import java.time.Duration;
  */
 @Configuration
 public class WebConfig implements WebMvcConfigurer {
+
+    /**
+     * Tomcat has no mapping for {@code .webmanifest}, so without this the
+     * web app manifest is served as application/octet-stream and Chrome
+     * declines to treat the site as installable — with no error anywhere,
+     * since the file downloads perfectly well.
+     */
+    @Bean
+    WebServerFactoryCustomizer<ConfigurableServletWebServerFactory> webmanifestMimeType() {
+        return factory -> {
+            MimeMappings mappings = new MimeMappings(MimeMappings.DEFAULT);
+            mappings.add("webmanifest", "application/manifest+json");
+            factory.setMimeMappings(mappings);
+        };
+    }
 
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {

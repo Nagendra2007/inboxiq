@@ -175,6 +175,15 @@ app:
   # Google account emails. Empty = the first account created on this deployment.
   admin-emails: ${ADMIN_EMAILS:}
 
+
+  # Browser push notifications. A VAPID key pair identifies this server to
+  # the browsers push services; generate one with
+  #   npx web-push generate-vapid-keys
+  # Blank disables notifications rather than failing at the user.
+  push:
+    public-key: ${VAPID_PUBLIC_KEY:}
+    private-key: ${VAPID_PRIVATE_KEY:}
+    subject: ${VAPID_SUBJECT:mailto:admin@example.com}
   # Default AI configuration. The administrator can switch provider, model and
   # key in the app at any time (Settings → AI provider) without a redeploy;
   # these values apply until they do, and after "Reset to defaults".

@@ -10,6 +10,7 @@ import { ConfirmDialog } from '../components/ui/Dialog';
 import { useToast } from '../components/ui/Toast';
 import { AiSettingsSection } from '../components/AiSettingsSection';
 import { AdministratorsSection } from '../components/AdministratorsSection';
+import { NotificationsSection } from '../components/NotificationsSection';
 import { ThemeSwitch } from '../components/ThemeToggle';
 import {
   DatabaseIcon,
@@ -184,6 +185,13 @@ export function SettingsPage() {
 
         {user.admin && <AiSettingsSection />}
         {user.admin && <AdministratorsSection currentEmail={user.email} />}
+
+        <Section
+          title="Notifications"
+          description="Get told about mail that matters, without keeping Mailroom open."
+        >
+          <NotificationsSection />
+        </Section>
 
         <Section title="Appearance">
           <div className="flex items-center gap-4">

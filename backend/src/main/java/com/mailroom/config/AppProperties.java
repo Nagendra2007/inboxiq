@@ -18,6 +18,7 @@ public class AppProperties {
     private final Gmail gmail = new Gmail();
     private final Sync sync = new Sync();
     private final RateLimit rateLimit = new RateLimit();
+    private final Push push = new Push();
     /**
      * Comma-separated Google account emails allowed to change app-wide
      * settings (the AI provider). When empty, the first account created on
@@ -34,6 +35,28 @@ public class AppProperties {
     public Gmail getGmail() { return gmail; }
     public Sync getSync() { return sync; }
     public RateLimit getRateLimit() { return rateLimit; }
+    public Push getPush() { return push; }
+
+    /**
+     * Browser push notifications. A VAPID key pair identifies this server
+     * to the browsers' push services; generate one with
+     * `npx web-push generate-vapid-keys`. Blank disables notifications
+     * entirely rather than failing at the user.
+     */
+    public static class Push {
+        private String publicKey;
+        private String privateKey;
+        // Must be a mailto: or https: URL. Push services use it to contact
+        // whoever is sending, if something goes wrong.
+        private String subject = "mailto:admin@example.com";
+
+        public String getPublicKey() { return publicKey; }
+        public void setPublicKey(String publicKey) { this.publicKey = publicKey; }
+        public String getPrivateKey() { return privateKey; }
+        public void setPrivateKey(String privateKey) { this.privateKey = privateKey; }
+        public String getSubject() { return subject; }
+        public void setSubject(String subject) { this.subject = subject; }
+    }
 
     public static class Frontend {
         private String baseUrl = "http://localhost:5173";
