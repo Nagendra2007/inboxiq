@@ -83,6 +83,13 @@ public class EmailAnalysis {
     @Column(name = "failure_reason", columnDefinition = "text")
     private String failureReason;
 
+    /**
+     * A one-time code the email is asking the reader to type in somewhere,
+     * or null. Verified to appear verbatim in the email before being stored.
+     */
+    @Column(name = "otp_code", length = 16)
+    private String otpCode;
+
     @Column(name = "ai_model_used", length = 128)
     private String aiModelUsed;
 

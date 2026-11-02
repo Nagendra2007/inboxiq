@@ -64,6 +64,7 @@ public class AiResponseParser {
                 clamp(intValue(node, "riskScore", 0), 0, 100),
                 safeEnum(text(node, "riskLevel", null), RiskLevel.class, RiskLevel.LOW).name(),
                 riskReasons,
+                text(node, "otpCode", null),
                 boolValue(node, "requiresReply", false),
                 boolValue(node, "actionRequired", false),
                 actionItems,

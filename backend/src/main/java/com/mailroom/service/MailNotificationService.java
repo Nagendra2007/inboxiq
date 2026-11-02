@@ -28,16 +28,23 @@ import java.util.UUID;
 public class MailNotificationService {
 
     private final PushNotificationService push;
+    private final DeviceNotificationService devices;
     private final EmailRepository emails;
 
-    public MailNotificationService(PushNotificationService push, EmailRepository emails) {
+    public MailNotificationService(PushNotificationService push,
+                                   DeviceNotificationService devices,
+                                   EmailRepository emails) {
         this.push = push;
+        this.devices = devices;
         this.emails = emails;
     }
 
     @Transactional(readOnly = true)
     public void notifyIfNoteworthy(UUID userId, UUID emailId) {
-        if (!push.isEnabled() || userId == null) return;
+        // Browsers and the Android app are separate channels, and a person
+        // may have one, both or neither. The decision below is shared; only
+        // the delivery differs.
+        if (userId == null || (!push.isEnabled() && !devices.isEnabled())) return;
 
         EmailMessage email = emails.findById(emailId).orElse(null);
         if (email == null || email.isRead() || email.isArchived()) return;
@@ -45,12 +52,28 @@ public class MailNotificationService {
         EmailAnalysis analysis = email.getAnalysis();
         if (analysis == null) return;
 
+        String otp = analysis.getOtpCode();
         boolean risky = analysis.getRiskLevel() == RiskLevel.HIGH;
         boolean urgent = analysis.getPriority() == Priority.HIGH;
-        if (!risky && !urgent) return;
+
+        // A one-time code always goes through, whatever the priority. Codes
+        // expire in minutes, and the entire value of the notification is
+        // arriving before the code does not.
+        if (otp == null && !risky && !urgent) return;
 
         String from = senderName(email.getSender());
-        String title = risky ? "Possible scam: " + from : from;
+        String url = "/inbox?email=" + emailId;
+
+        if (otp != null) {
+            // The code is the message. Anyone reading this wants to type it
+            // into something and get on with their day, so it goes in the
+            // title where a phone shows it largest, and the sender — which
+            // is context, not the point — goes underneath.
+            push.notifyUser(userId, otp, "Code from " + from, url, "otp-" + emailId);
+            devices.notifyOtp(userId, otp, from, url);
+            return;
+        }
+
         String body = analysis.getSummary() != null && !analysis.getSummary().isBlank()
                 ? analysis.getSummary()
                 : (email.getSubject() == null || email.getSubject().isBlank()
@@ -58,7 +81,9 @@ public class MailNotificationService {
 
         // Tagging by email id means a re-analysis replaces the earlier
         // notification instead of showing the same mail twice.
-        push.notifyUser(userId, title, body, "/inbox?email=" + emailId, "email-" + emailId);
+        String title = risky ? "Possible scam: " + from : from;
+        push.notifyUser(userId, title, body, url, "email-" + emailId);
+        devices.notifyUser(userId, title, body, url);
     }
 
     /** {@code "Priya Shah" <priya@x.io>} down to what a notification has room for. */
