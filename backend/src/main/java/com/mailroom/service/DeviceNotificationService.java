@@ -53,6 +53,10 @@ public class DeviceNotificationService {
     public void notifyUser(UUID userId, String title, String body, String url) {
         if (!isEnabled()) return;
         List<DeviceToken> devices = tokens.findByUserId(userId);
+        if (devices.isEmpty()) {
+            log.debug("Nothing to notify: no app is registered for this account");
+            return;
+        }
         for (DeviceToken device : devices) {
             try {
                 switch (fcm.send(device.getToken(), title, body, url)) {
