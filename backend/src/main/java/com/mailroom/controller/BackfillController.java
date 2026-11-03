@@ -24,8 +24,17 @@ import java.util.Map;
 @RequestMapping("/api/mail/backfill")
 public class BackfillController {
 
-    /** Longer than this and it is simpler to say "everything". */
-    private static final int MAX_MONTHS = 60;
+    /**
+     * Six months is the cap, not a default anyone can argue past.
+     *
+     * <p>Each extra month is thousands more Gmail requests against a quota
+     * shared with the ordinary sync, more rows, and more to embed — for
+     * mail that is progressively less likely to be asked about. The limit
+     * is enforced here rather than left to the buttons, because the
+     * buttons are not the only way to reach this.
+     */
+    private static final int MAX_MONTHS = 6;
+    private static final int DEFAULT_MONTHS = 3;
 
     private final CurrentUserProvider currentUserProvider;
     private final MailAccountService mailAccountService;
@@ -48,8 +57,8 @@ public class BackfillController {
 
     @PostMapping
     public ResponseEntity<Map<String, Object>> start(@RequestBody(required = false) StartRequest request) {
-        int months = request == null || request.months() == null ? 12 : request.months();
-        if (months < 0 || months > MAX_MONTHS) months = 12;
+        int months = request == null || request.months() == null ? DEFAULT_MONTHS : request.months();
+        if (months < 1 || months > MAX_MONTHS) months = DEFAULT_MONTHS;
 
         boolean started = backfill.start(account().getId(), months);
         // Not an error: asking twice while one is running is what a second
