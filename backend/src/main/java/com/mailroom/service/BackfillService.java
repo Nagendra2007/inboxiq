@@ -114,7 +114,7 @@ public class BackfillService {
     /**
      * Starts importing, or resumes one that stopped.
      *
-     * @param months how far back to go; 0 means the whole mailbox
+     * @param months how far back to go, at least one
      * @return false when an import for this account is already running
      */
     @Transactional
@@ -144,10 +144,13 @@ public class BackfillService {
      * Gmail's query syntax, and deliberately not {@code in:inbox}: the
      * receipts and confirmations worth searching for are exactly the mail
      * that has been filed, archived or auto-labelled away.
+     *
+     * <p>Always bounded by a date. An unbounded import of a mailbox years
+     * deep is a lot of somebody's Gmail quota spent on mail nobody is
+     * going to ask about.
      */
     private static String queryFor(int months) {
-        if (months <= 0) return "-in:chats";
-        LocalDate from = LocalDate.now(ZoneOffset.UTC).minusMonths(months);
+        LocalDate from = LocalDate.now(ZoneOffset.UTC).minusMonths(Math.max(1, months));
         return "-in:chats after:" + from.format(GMAIL_DATE);
     }
 
