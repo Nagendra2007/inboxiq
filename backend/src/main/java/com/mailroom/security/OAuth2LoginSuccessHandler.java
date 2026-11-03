@@ -54,6 +54,26 @@ public class OAuth2LoginSuccessHandler extends SimpleUrlAuthenticationSuccessHan
         this.appProperties = appProperties;
     }
 
+    /**
+     * Sends the browser back to the login page with a reason.
+     *
+     * <p>Checks whether the response has already gone out first. Calling
+     * sendRedirect on a committed response throws, and a failure inside a
+     * failure handler is how an ordinary error becomes a blank 500 page —
+     * the exact shape this method exists to avoid.
+     */
+    private void sendToLogin(HttpServletResponse response, String frontend, String reason) {
+        if (response.isCommitted()) {
+            log.warn("Cannot report sign-in failure '{}': the response is already committed", reason);
+            return;
+        }
+        try {
+            response.sendRedirect(frontend + "/login?error=" + reason);
+        } catch (IOException e) {
+            log.warn("Could not send the browser back to the login page: {}", e.toString());
+        }
+    }
+
     @Override
     public void onAuthenticationSuccess(HttpServletRequest request, HttpServletResponse response,
                                          Authentication authentication) throws IOException {
@@ -86,8 +106,19 @@ public class OAuth2LoginSuccessHandler extends SimpleUrlAuthenticationSuccessHan
             return;
         }
 
-        MailAccount account = mailAccountService.upsertFromOAuthLogin(email, name, accessToken, refreshToken, expiresAt);
         String frontend = appProperties.getFrontend().getBaseUrl();
+        MailAccount account;
+        try {
+            account = mailAccountService.upsertFromOAuthLogin(email, name, accessToken, refreshToken, expiresAt);
+        } catch (RuntimeException e) {
+            // Everything below here runs after Google has already accepted
+            // the user, so a failure is ours. Unhandled, it reaches the
+            // browser as Spring's blank error page: no message, no code,
+            // nothing to act on, and a signed-in user staring at a 500.
+            log.error("Could not link the Gmail account after a successful Google sign-in", e);
+            sendToLogin(response, frontend, "account_link_failed");
+            return;
+        }
 
         HttpSession session = request.getSession(false);
         boolean consentJustGiven = session != null
@@ -107,7 +138,14 @@ public class OAuth2LoginSuccessHandler extends SimpleUrlAuthenticationSuccessHan
 
         // Fetch new mail in the background while the browser loads the app;
         // the inbox shows what's already stored and updates over SSE.
-        syncCoordinator.requestSync(account.getId(), SyncTrigger.LOGIN);
+        // Guarded for the same reason as the watch below: the user is
+        // signed in by this point, and nothing done for their convenience
+        // afterwards is worth refusing them entry over.
+        try {
+            syncCoordinator.requestSync(account.getId(), SyncTrigger.LOGIN);
+        } catch (RuntimeException e) {
+            log.warn("Could not start the sign-in sync: {}", e.toString());
+        }
         // And make sure Gmail is still set up to tell us about the next one.
         // Cheap unless a registration is actually due, and a failure here is
         // only a return to polling, so it must never block signing in.
@@ -118,7 +156,12 @@ public class OAuth2LoginSuccessHandler extends SimpleUrlAuthenticationSuccessHan
         }
 
         boolean gmailJustConnected = refreshToken != null && !refreshToken.isBlank();
-        getRedirectStrategy().sendRedirect(request, response,
-                frontend + (gmailJustConnected ? "/inbox?connected=1" : "/inbox"));
+        try {
+            getRedirectStrategy().sendRedirect(request, response,
+                    frontend + (gmailJustConnected ? "/inbox?connected=1" : "/inbox"));
+        } catch (RuntimeException e) {
+            log.error("Could not redirect after sign-in", e);
+            sendToLogin(response, frontend, "redirect_failed");
+        }
     }
 }
