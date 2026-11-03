@@ -86,7 +86,13 @@ export function useAudioRecorder(maxSeconds = 60): AudioRecorderState {
       });
       streamRef.current = stream;
 
-      const recorder = new MediaRecorder(stream, { mimeType: pickMimeType() });
+      // Android's WebView supports fewer container formats than Chrome
+      // does, and passing one it does not know throws NotSupportedError
+      // from the constructor — after the microphone has already opened,
+      // which is why that reads as the microphone failing. With no type at
+      // all it picks its own, and the transcriber accepts what it sends.
+      const mimeType = pickMimeType();
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
       recorder.ondataavailable = (event) => {
         if (event.data.size > 0) chunksRef.current.push(event.data);
       };
@@ -136,13 +142,31 @@ export function useAudioRecorder(maxSeconds = 60): AudioRecorderState {
       setStarting(false);
       setRecording(false);
       const name = (err as DOMException)?.name;
-      setError(
-        name === 'NotAllowedError'
-          ? 'Microphone access was blocked. Allow it in your browser, then try again.'
-          : name === 'NotFoundError'
-            ? 'No microphone was found.'
-            : 'The microphone could not be opened.'
-      );
+      switch (name) {
+        case 'NotAllowedError':
+          setError('Microphone access was blocked. Allow it, then try again.');
+          break;
+        case 'NotFoundError':
+          setError('No microphone was found.');
+          break;
+        case 'NotReadableError':
+          // Something else holds the device: a call, another app, or a
+          // recorder this page failed to release.
+          setError('The microphone is in use by something else. Close it and try again.');
+          break;
+        case 'OverconstrainedError':
+          setError('This microphone cannot record in the format Mailroom needs.');
+          break;
+        default:
+          // Everything else names itself. A single catch-all message is how
+          // the real cause gets thrown away, and then the only way to find
+          // it is to guess.
+          setError(
+            name
+              ? `The microphone could not be opened (${name}).`
+              : 'The microphone could not be opened.'
+          );
+      }
     }
   }, [supported, maxSeconds]);
 
