@@ -100,14 +100,23 @@ public class BackfillService {
         this.events = events;
     }
 
-    /** What the settings page shows while an import runs, and afterwards. */
-    public record Progress(boolean running, int stored, Instant startedAt, Instant finishedAt, String query) {}
+    /**
+     * What the settings page shows.
+     *
+     * @param stored how much of this mailbox is stored in total — not how
+     *               much the last run added. The run counter resets
+     *               whenever the requested range changes, and "6 months"
+     *               asked for on two different days is two different
+     *               ranges, so it would read as though a full mailbox had
+     *               shrunk to a handful of messages
+     */
+    public record Progress(boolean running, long stored, Instant startedAt, Instant finishedAt, String query) {}
 
     @Transactional(readOnly = true)
     public Progress progress(UUID mailAccountId) {
         MailAccount account = mailAccountRepository.findById(mailAccountId).orElse(null);
         if (account == null) return new Progress(false, 0, null, null, null);
-        return new Progress(running.contains(mailAccountId), account.getBackfillStored(),
+        return new Progress(running.contains(mailAccountId), emailRepository.countByMailAccountId(mailAccountId),
                 account.getBackfillStartedAt(), account.getBackfillFinishedAt(), account.getBackfillQuery());
     }
 
@@ -221,7 +230,7 @@ public class BackfillService {
 
     private void publish(MailAccount account, boolean done) {
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("stored", account.getBackfillStored());
+        payload.put("stored", emailRepository.countByMailAccountId(account.getId()));
         payload.put("done", done);
         events.publish(account.getUser().getId(), RealtimeEvent.BACKFILL_PROGRESS, payload);
     }
