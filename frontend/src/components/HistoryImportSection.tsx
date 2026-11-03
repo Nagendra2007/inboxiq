@@ -73,13 +73,14 @@ export function HistoryImportSection() {
     <div className="space-y-4">
       <p className="text-sm leading-relaxed text-white/55">
         Signing in fetches only your newest mail, so it is quick. Import more to make older mail searchable — and to
-        give <span className="text-white/80">Ask</span> something to find.
+        give <span className="text-white/80">Ask</span> something to find. Running it again never duplicates
+        anything: mail already stored is skipped before it is downloaded.
       </p>
 
       {running ? (
         <div className="flex items-center gap-2 text-sm text-white/60">
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent-400" />
-          Importing — <span className="tabular-nums text-white/80">{stored.toLocaleString()}</span> messages so far.
+          Importing — <span className="tabular-nums text-white/80">{stored.toLocaleString()}</span> messages stored.
           You can leave this page.
         </div>
       ) : (
@@ -94,7 +95,8 @@ export function HistoryImportSection() {
 
       {!running && stored > 0 && (
         <p className="text-xs text-white/40">
-          {stored.toLocaleString()} messages imported{finished ? '.' : ' so far — start again to continue.'}
+          {stored.toLocaleString()} messages stored and searchable
+          {finished ? '.' : ' — start again to continue.'}
         </p>
       )}
 
