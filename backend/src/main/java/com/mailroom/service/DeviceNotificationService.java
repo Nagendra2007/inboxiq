@@ -139,6 +139,16 @@ public class DeviceNotificationService {
         tokens.deleteByToken(token);
     }
 
+    /**
+     * A code notification to this user's devices, for the settings page.
+     * Deliberately not a real-looking code: nobody should be able to mistake
+     * this for something to type in somewhere.
+     */
+    @Transactional
+    public void sendTestCode(UUID userId) {
+        notifyOtp(userId, "000000", "Mailroom test", "/inbox");
+    }
+
     /** A single notification to this user's devices, for the app's test button. */
     @Transactional
     public void sendTest(UUID userId) {

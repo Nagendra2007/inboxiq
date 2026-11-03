@@ -82,6 +82,18 @@ export function NotificationsSection() {
     }
   }
 
+  async function sendCodeTest() {
+    setBusy(true);
+    try {
+      await DevicesApi.testCode();
+      toast.success('Sent a test code', 'It should arrive showing 000000 with a copy button.');
+    } catch (err) {
+      toast.error('Could not send', errorMessage(err, 'The server could not reach Firebase.'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const androidSection = (
     <div className="space-y-2 border-t border-white/5 pt-4">
       <p className="text-sm font-medium text-white/70">The Android app</p>
@@ -99,9 +111,18 @@ export function NotificationsSection() {
           <p className="text-sm leading-relaxed text-white/55">
             Configured. A phone registers itself the first time you open the app signed in.
           </p>
-          <Button onClick={sendAppTest} loading={busy} variant="ghost">
-            Send a test to my phone
-          </Button>
+          <div className="flex flex-wrap gap-3">
+            <Button onClick={sendAppTest} loading={busy} variant="ghost">
+              Send a test to my phone
+            </Button>
+            <Button onClick={sendCodeTest} loading={busy} variant="ghost">
+              Send a test code
+            </Button>
+          </div>
+          <p className="text-xs text-white/40">
+            A code takes a different path to an ordinary notification — its own message, channel and layout — so the
+            two buttons can disagree, and which one fails says where to look.
+          </p>
         </>
       )}
     </div>
