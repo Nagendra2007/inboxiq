@@ -39,6 +39,15 @@ public class EmbeddingClient {
     /** Enough for a batch, short enough not to time out a background pass. */
     static final int MAX_BATCH = 64;
 
+    /**
+     * WebClient buffers a response in memory and defaults to 256 KB, which
+     * is far less than a batch of embeddings: sixty-four vectors of a
+     * thousand dimensions arrive as several megabytes of JSON numbers. The
+     * call then fails with the status still reading 200 OK, which is a
+     * confusing way to learn that the limit is a client-side one.
+     */
+    private static final int MAX_RESPONSE_BYTES = 32 * 1024 * 1024;
+
     private final AppProperties appProperties;
     private final WebClient.Builder webClientBuilder;
     private final ObjectMapper objectMapper;
@@ -126,7 +135,7 @@ public class EmbeddingClient {
         body.put("input", texts);
         if (dimensions > 0 && !dimensionsRejected) body.put("dimensions", dimensions);
 
-        WebClient.RequestBodySpec request = webClientBuilder.build().post()
+        WebClient.RequestBodySpec request = embeddingWebClient().post()
                 .uri(config.getBaseUrl() + "/embeddings")
                 .contentType(MediaType.APPLICATION_JSON);
         if (notBlank(config.getApiKey())) {
@@ -153,6 +162,19 @@ public class EmbeddingClient {
             vectors.add(normalise(vector));
         }
         return vectors;
+    }
+
+    /** Built once; the buffer limit has to be set at construction. */
+    private volatile WebClient webClient;
+
+    private WebClient embeddingWebClient() {
+        WebClient existing = webClient;
+        if (existing != null) return existing;
+        WebClient built = webClientBuilder.clone()
+                .codecs(codecs -> codecs.defaultCodecs().maxInMemorySize(MAX_RESPONSE_BYTES))
+                .build();
+        webClient = built;
+        return built;
     }
 
     /**

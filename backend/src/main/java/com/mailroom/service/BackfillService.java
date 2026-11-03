@@ -136,14 +136,14 @@ public class BackfillService {
         // A different range is a different run: the page token belongs to
         // the query that produced it, and reusing it across queries pages
         // through the wrong result set.
-        if (!query.equals(account.getBackfillQuery())) {
-            account.setBackfillQuery(query);
-            account.setBackfillPageToken(null);
-            account.setBackfillStored(0);
-        }
-        account.setBackfillStartedAt(Instant.now());
-        account.setBackfillFinishedAt(null);
-        mailAccountRepository.save(account);
+        boolean sameRun = query.equals(account.getBackfillQuery());
+        mailAccountRepository.recordBackfillState(
+                mailAccountId,
+                query,
+                sameRun ? account.getBackfillPageToken() : null,
+                sameRun ? account.getBackfillStored() : 0,
+                Instant.now(),
+                null);
 
         workers.submit(() -> run(mailAccountId));
         return true;
@@ -176,10 +176,14 @@ public class BackfillService {
                 stored += storePage(account, page.messageIds());
 
                 // Written before the pause, so a restart resumes from the
-                // page after the one just finished rather than repeating it.
-                account.setBackfillPageToken(page.nextPageToken());
-                account.setBackfillStored(account.getBackfillStored() + stored);
-                mailAccountRepository.save(account);
+                // page after the one just finished rather than repeating
+                // it. Through an explicit update, because an entity read
+                // back by a repository is read-only and silently discards
+                // the change — which leaves the token null forever, so
+                // every page fetched is page one and the import never
+                // advances or ends.
+                mailAccountRepository.recordBackfillProgress(
+                        mailAccountId, page.nextPageToken(), account.getBackfillStored() + stored);
                 publish(account, page.nextPageToken() == null);
                 stored = 0;
 
@@ -217,14 +221,19 @@ public class BackfillService {
         return stored;
     }
 
-    @Transactional
-    protected void finish(UUID mailAccountId) {
+    /**
+     * Not {@code @Transactional}: this is called from {@link #run} on the
+     * same object, so the proxy that would start a transaction is not
+     * involved and the annotation would be decoration. The repository
+     * method carries its own.
+     */
+    private void finish(UUID mailAccountId) {
         mailAccountRepository.findById(mailAccountId).ifPresent(account -> {
-            account.setBackfillFinishedAt(Instant.now());
-            account.setBackfillPageToken(null);
-            mailAccountRepository.save(account);
-            log.info("History import finished for account id={}: {} messages",
-                    mailAccountId, account.getBackfillStored());
+            mailAccountRepository.recordBackfillState(
+                    mailAccountId, account.getBackfillQuery(), null,
+                    account.getBackfillStored(), account.getBackfillStartedAt(), Instant.now());
+            log.info("History import finished for account id={}: {} messages stored in this mailbox",
+                    mailAccountId, emailRepository.countByMailAccountId(mailAccountId));
         });
     }
 
