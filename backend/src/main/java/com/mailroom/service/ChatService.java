@@ -227,17 +227,29 @@ public class ChatService {
     }
 
     private List<EmailMessage> search(UUID mailAccountId, ChatPlanAiResult plan, boolean withCategory) {
-        Specification<EmailMessage> spec = EmailSpecifications.and(
+        Specification<EmailMessage> scope = EmailSpecifications.and(
                 // Scoped to this mailbox first and always. Everything below
                 // narrows; nothing below can widen past this.
                 EmailSpecifications.forMailAccount(mailAccountId),
-                EmailSpecifications.anyKeyword(plan.keywords()),
-                withCategory ? EmailSpecifications.category(categoryOf(plan)) : null,
+                // Tolerant of mail that has no category yet, which is most
+                // of an imported mailbox: not knowing what something is
+                // must not be the same as knowing it is something else.
+                withCategory ? EmailSpecifications.categoryOrUnknown(categoryOf(plan)) : null,
                 EmailSpecifications.receivedBetween(dateOf(plan.after()), dateOf(plan.before())),
                 plan.unreadOnly() ? EmailSpecifications.unreadOnly(true) : null
         );
 
-        List<EmailMessage> found = new ArrayList<>(emailRepository.findAll(spec,
+        // Subject matches first, and kept. Someone asking about the
+        // academic calendar wants the email called "Academic Calendar",
+        // and the body search below is capped and ordered by date — so
+        // without this a two-year-old subject match loses its place to
+        // this week's mail that mentions the word in a footer.
+        List<EmailMessage> found = new ArrayList<>(emailRepository.findAll(
+                EmailSpecifications.and(scope, EmailSpecifications.subjectContainsAny(plan.keywords())),
+                PageRequest.of(0, 20, Sort.by(Sort.Direction.DESC, "receivedAt"))).getContent());
+
+        found.addAll(emailRepository.findAll(
+                EmailSpecifications.and(scope, EmailSpecifications.anyKeyword(plan.keywords())),
                 PageRequest.of(0, RETRIEVED, Sort.by(Sort.Direction.DESC, "receivedAt"))).getContent());
 
         // Senders are matched separately and merged: "receipts from the
