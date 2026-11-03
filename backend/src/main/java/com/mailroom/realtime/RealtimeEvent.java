@@ -24,6 +24,9 @@ public final class RealtimeEvent {
     /** Deleted or moved to Trash/Spam in Gmail. */
     public static final String EMAIL_DELETED = "email.deleted";
 
+    /** A page of imported history was stored; payload is the running total. */
+    public static final String BACKFILL_PROGRESS = "mail.backfill.progress";
+
     public static final String ANALYSIS_STARTED = "email.analysis.started";
     public static final String ANALYSIS_COMPLETED = "email.analysis.completed";
     public static final String ANALYSIS_FAILED = "email.analysis.failed";

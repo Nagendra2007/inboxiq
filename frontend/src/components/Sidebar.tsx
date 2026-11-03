@@ -6,7 +6,7 @@ import { formatCount } from '../lib/format';
 import { Avatar } from './ui/Avatar';
 import { Logo } from './ui/Logo';
 import { ThemeToggleRow } from './ThemeToggle';
-import { DashboardIcon, InboxIcon, KeyboardIcon, PenIcon, SettingsIcon, TodoIcon } from './ui/Icons';
+import { AskIcon, DashboardIcon, InboxIcon, KeyboardIcon, PenIcon, SettingsIcon, TodoIcon } from './ui/Icons';
 
 interface NavItem {
   to: string;
@@ -18,6 +18,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { to: '/inbox', label: 'Inbox', shortLabel: 'Inbox', icon: InboxIcon, count: (s) => s.unreadEmails },
+  { to: '/ask', label: 'Ask', shortLabel: 'Ask', icon: AskIcon },
   { to: '/dashboard', label: 'Overview', shortLabel: 'Overview', icon: DashboardIcon },
   { to: '/action-items', label: 'To-dos', shortLabel: 'To-dos', icon: TodoIcon, count: (s) => s.openActionItems },
 ];

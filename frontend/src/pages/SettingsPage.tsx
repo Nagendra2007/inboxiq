@@ -10,6 +10,7 @@ import { ConfirmDialog } from '../components/ui/Dialog';
 import { useToast } from '../components/ui/Toast';
 import { AiSettingsSection } from '../components/AiSettingsSection';
 import { AdministratorsSection } from '../components/AdministratorsSection';
+import { HistoryImportSection } from '../components/HistoryImportSection';
 import { NotificationsSection } from '../components/NotificationsSection';
 import { ThemeSwitch } from '../components/ThemeToggle';
 import {
@@ -193,6 +194,13 @@ export function SettingsPage() {
 
         {user.admin && <AiSettingsSection />}
         {user.admin && <AdministratorsSection currentEmail={user.email} />}
+
+        <Section
+          title="Mail history"
+          description="How much of your mailbox Mailroom has stored, and can therefore search."
+        >
+          <HistoryImportSection />
+        </Section>
 
         <Section
           title="Notifications"

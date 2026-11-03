@@ -2,6 +2,8 @@ package com.mailroom.ai;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.mailroom.ai.dto.ChatAnswerAiResult;
+import com.mailroom.ai.dto.ChatPlanAiResult;
 import com.mailroom.ai.dto.EmailAnalysisAiResult;
 import com.mailroom.ai.dto.ComposeCommandAiResult;
 import com.mailroom.ai.dto.ReplyAiResult;
@@ -72,6 +74,41 @@ public class AiResponseParser {
                 importantDates,
                 reasoning
         );
+    }
+
+    public ChatPlanAiResult parseChatPlan(String raw) {
+        JsonNode node = parseJson(raw);
+        String category = text(node, "category", null);
+        return new ChatPlanAiResult(
+                textArray(node, "keywords"),
+                textArray(node, "senders"),
+                // Null rather than a default: an invented category filters
+                // out the very mail the question was about, and a search
+                // with no category still finds it.
+                category == null || category.isBlank() ? null
+                        : safeEnumOrNull(category, EmailCategory.class),
+                isValidIsoDate(text(node, "after", null)) ? text(node, "after", null) : null,
+                isValidIsoDate(text(node, "before", null)) ? text(node, "before", null) : null,
+                boolValue(node, "unreadOnly", false),
+                text(node, "intent", "find")
+        );
+    }
+
+    public ChatAnswerAiResult parseChatAnswer(String raw) {
+        JsonNode node = parseJson(raw);
+        String answer = text(node, "answer", null);
+        if (answer == null || answer.isBlank()) {
+            throw new AiServiceException("The AI did not answer the question.");
+        }
+        return new ChatAnswerAiResult(answer.strip(), textArray(node, "emailIds"));
+    }
+
+    /** Like safeEnum, but says "I do not know" instead of guessing a default. */
+    private static <E extends Enum<E>> String safeEnumOrNull(String value, Class<E> type) {
+        for (E constant : type.getEnumConstants()) {
+            if (constant.name().equalsIgnoreCase(value.trim())) return constant.name();
+        }
+        return null;
     }
 
     public ReplyAiResult parseReply(String raw) {

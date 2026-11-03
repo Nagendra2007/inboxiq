@@ -31,6 +31,7 @@ const SERVER_EVENTS: Exclude<EventName, 'resync'>[] = [
   'email.saved',
   'email.updated',
   'email.deleted',
+  'mail.backfill.progress',
   'email.analysis.started',
   'email.analysis.completed',
   'email.analysis.failed',

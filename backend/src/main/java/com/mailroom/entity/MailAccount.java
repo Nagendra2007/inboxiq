@@ -91,6 +91,29 @@ public class MailAccount {
     private Instant gmailWatchExpiration;
 
     @CreationTimestamp
+    /**
+     * Where the history import got to, as Gmail's own page token.
+     *
+     * <p>Kept in the database rather than in memory because a mailbox of
+     * any size will outlive a deploy, and starting again from the top each
+     * time means never finishing.
+     */
+    @Column(name = "backfill_page_token", columnDefinition = "text")
+    private String backfillPageToken;
+
+    /** The Gmail query being paged through, so a resumed run matches it. */
+    @Column(name = "backfill_query", length = 200)
+    private String backfillQuery;
+
+    @Column(name = "backfill_started_at")
+    private Instant backfillStartedAt;
+
+    @Column(name = "backfill_finished_at")
+    private Instant backfillFinishedAt;
+
+    @Column(name = "backfill_stored", nullable = false)
+    private int backfillStored = 0;
+
     @Column(name = "created_at", updatable = false)
     private Instant createdAt;
 
