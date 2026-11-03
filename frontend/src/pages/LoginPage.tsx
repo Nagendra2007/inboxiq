@@ -22,6 +22,9 @@ const ERROR_MESSAGES: Record<string, string> = {
   no_email: 'Your Google account didn’t share an email address, so Mailroom can’t connect it.',
   no_authorized_client: 'Google didn’t return the permissions Mailroom needs. Please try again and approve access.',
   unexpected_auth_type: 'Something went wrong finishing sign-in. Please try again.',
+  account_link_failed:
+    'Google signed you in, but Mailroom couldn’t finish connecting your mailbox. Please try again — if it keeps happening, the server log says why.',
+  redirect_failed: 'Sign-in finished but the page didn’t load. Please try again.',
 };
 
 const FEATURES = [
