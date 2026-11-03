@@ -36,7 +36,7 @@ public final class EmailAnalysisPrompt {
                   "otpCode": string or null — a one-time code the reader is meant to type in somewhere: a verification code, OTP, 2FA code, login or confirmation code. Copy it EXACTLY as it appears, character for character. Null unless you are certain: an order number, invoice number, tracking number, reference, account number, price, date or year is NOT a one-time code, and neither is a discount or coupon code. Never reconstruct, correct or invent one — if you cannot see it verbatim in the text, return null.
                   "requiresReply": boolean,
                   "actionRequired": boolean,
-                  "actionItems": [ { "description": string, "deadline": "YYYY-MM-DD" or null } ],
+                  "actionItems": [ { "description": string, "deadline": "YYYY-MM-DD" or null } ] — things the READER must go and do, which will not happen unless they do them, and which are still worth remembering an hour from now. Write each as an instruction to the reader: "Pay the hostel fee of 12,000", "Send the signed form back to the registrar". Almost every email has NONE, and an empty array is the right answer far more often than not,
                   "importantDates": string[] (each formatted "YYYY-MM-DD"),
                   "reasoning": string[] (short phrases explaining the classification)
                 }
@@ -44,6 +44,17 @@ public final class EmailAnalysisPrompt {
                 Today's date is %s — resolve relative dates ("tomorrow", "next Friday", \
                 "in two weeks") against it. If you cannot confidently resolve a relative \
                 date to a specific calendar date, omit it rather than guessing.
+
+                A to-do list people keep using is one they trust, and one wrong
+                item costs more than ten missing ones. So actionItems is empty
+                unless the email genuinely asks the reader to do something. NOT
+                a to-do, ever:
+
+                - typing a verification code, or anything else finished in the                 moment of reading: the reader is already doing it, and it will                 have expired by the time they look at a list
+                - what the SENDER will do ("we will ship your order"), or what                 has already happened ("your payment was received")
+                - reading, viewing, clicking, opening an attachment, "learn                 more", "shop now", "see details" — these are how one reads an                 email, not tasks
+                - anything in marketing or a newsletter unless it names a real                 deadline the reader has chosen to care about
+                - "no action required", or any variation of it. Return an empty                 array instead of saying there is nothing to do
 
                 Phrase any risk assessment as a possibility for the user to consider, \
                 never as a certainty ("appears potentially suspicious", not "this is a \
