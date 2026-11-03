@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { AuthApi } from '../api/endpoints';
+import { AuthApi, DevicesApi } from '../api/endpoints';
 import { errorMessage, startGmailConnect } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { useAppShell } from '../context/AppShell';
@@ -69,6 +69,14 @@ export function SettingsPage() {
 
   const logout = async () => {
     setSigningOut(true);
+    // The Android app leaves its notification token here, because this is
+    // the last moment anyone can prove the phone belonged to this account.
+    // Skip it and the phone keeps receiving this account's mail after
+    // somebody else signs in on it.
+    const device = (window as unknown as { __mailroomDevice?: string }).__mailroomDevice;
+    if (device) {
+      await DevicesApi.unregister(device).catch(() => {});
+    }
     try {
       await AuthApi.logout();
     } catch {
