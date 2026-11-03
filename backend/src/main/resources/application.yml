@@ -187,6 +187,18 @@ app:
   fcm:
     project-id: ${FCM_PROJECT_ID:}
     service-account-json: ${FCM_SERVICE_ACCOUNT_JSON:}
+
+  # Semantic mail search, for the Ask page. Its own provider, because the
+  # one answering questions usually cannot do this: OpenRouter and Groq
+  # both serve chat completions and neither serves embeddings. Blank
+  # disables it and questions fall back to keyword search alone.
+  embeddings:
+    base-url: ${EMBEDDINGS_BASE_URL:https://api.openai.com/v1}
+    api-key: ${EMBEDDINGS_API_KEY:}
+    model: ${EMBEDDINGS_MODEL:}
+    # Smaller vectors compare faster and store smaller; current OpenAI
+    # embedding models accept this and others ignore it.
+    dimensions: ${EMBEDDINGS_DIMENSIONS:256}
   push:
     public-key: ${VAPID_PUBLIC_KEY:}
     private-key: ${VAPID_PRIVATE_KEY:}

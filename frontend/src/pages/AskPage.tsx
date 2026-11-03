@@ -53,9 +53,17 @@ function Citations({ citations }: { citations: ChatCitation[] }) {
   );
 }
 
+interface Conversation {
+  id: string;
+  title: string;
+  updatedAt: string;
+}
+
 export function AskPage() {
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [conversationId, setConversationId] = useState<string | undefined>();
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
   const [question, setQuestion] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -64,6 +72,33 @@ export function AskPage() {
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [turns, busy]);
+
+  const refreshConversations = useCallback(() => {
+    ChatApi.conversations()
+      .then(setConversations)
+      .catch(() => {});
+  }, []);
+
+  useEffect(refreshConversations, [refreshConversations]);
+
+  const open = useCallback(async (id: string) => {
+    setShowHistory(false);
+    setError('');
+    try {
+      const history = await ChatApi.history(id);
+      setTurns(history);
+      setConversationId(id);
+    } catch (err) {
+      setError(errorMessage(err, 'That conversation could not be opened.'));
+    }
+  }, []);
+
+  const startNew = useCallback(() => {
+    setTurns([]);
+    setConversationId(undefined);
+    setShowHistory(false);
+    setError('');
+  }, []);
 
   const ask = useCallback(
     async (text: string) => {
@@ -86,7 +121,9 @@ export function AskPage() {
 
       try {
         const answer = await ChatApi.ask(trimmed, conversationId);
+        const isNew = !conversationId;
         setConversationId(answer.conversationId);
+        if (isNew) refreshConversations();
         setTurns((previous) => [
           ...previous,
           {
@@ -105,13 +142,51 @@ export function AskPage() {
         setBusy(false);
       }
     },
-    [busy, conversationId]
+    [busy, conversationId, refreshConversations]
   );
 
   const empty = turns.length === 0;
 
   return (
     <div className="mx-auto flex h-full w-full max-w-3xl flex-col px-4 py-6">
+      {(turns.length > 0 || conversations.length > 0) && (
+        <div className="mb-4 flex items-center justify-between gap-3 border-b border-white/[0.06] pb-3">
+          <button
+            type="button"
+            onClick={() => setShowHistory((open) => !open)}
+            className="text-[13px] text-white/45 transition hover:text-white/75"
+          >
+            {showHistory ? 'Hide earlier questions' : `Earlier questions (${conversations.length})`}
+          </button>
+          {turns.length > 0 && (
+            <button
+              type="button"
+              onClick={startNew}
+              className="text-[13px] text-white/45 transition hover:text-white/75"
+            >
+              New question
+            </button>
+          )}
+        </div>
+      )}
+
+      {showHistory && (
+        <div className="mb-4 space-y-1">
+          {conversations.length === 0 && <p className="text-[13px] text-white/35">Nothing yet.</p>}
+          {conversations.map((conversation) => (
+            <button
+              key={conversation.id}
+              type="button"
+              onClick={() => open(conversation.id)}
+              className="flex w-full items-baseline justify-between gap-3 rounded-lg px-2.5 py-1.5 text-left transition hover:bg-white/[0.04]"
+            >
+              <span className="truncate text-[13px] text-white/70">{conversation.title}</span>
+              <span className="shrink-0 text-[11px] text-white/30">{formatListTime(conversation.updatedAt)}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="flex-1 space-y-5 overflow-y-auto pb-4">
         {empty && (
           <div className="pt-10">

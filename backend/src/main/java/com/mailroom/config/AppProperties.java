@@ -20,6 +20,7 @@ public class AppProperties {
     private final RateLimit rateLimit = new RateLimit();
     private final Push push = new Push();
     private final Fcm fcm = new Fcm();
+    private final Embeddings embeddings = new Embeddings();
     /**
      * Comma-separated Google account emails allowed to change app-wide
      * settings (the AI provider). When empty, the first account created on
@@ -38,6 +39,33 @@ public class AppProperties {
     public RateLimit getRateLimit() { return rateLimit; }
     public Push getPush() { return push; }
     public Fcm getFcm() { return fcm; }
+    public Embeddings getEmbeddings() { return embeddings; }
+
+    /**
+     * Semantic mail search.
+     *
+     * <p>Its own provider, because the one answering questions usually
+     * cannot do this — OpenRouter and Groq both serve chat completions and
+     * neither serves embeddings. Blank disables it and questions are
+     * answered from keyword search alone, which works; it just does less
+     * well on a question whose words nobody put in an email.
+     */
+    public static class Embeddings {
+        private String baseUrl = "https://api.openai.com/v1";
+        private String apiKey;
+        private String model;
+        /** 0 leaves it to the model. Smaller vectors compare faster and store smaller. */
+        private int dimensions = 256;
+
+        public String getBaseUrl() { return baseUrl; }
+        public void setBaseUrl(String baseUrl) { this.baseUrl = baseUrl; }
+        public String getApiKey() { return apiKey; }
+        public void setApiKey(String apiKey) { this.apiKey = apiKey; }
+        public String getModel() { return model; }
+        public void setModel(String model) { this.model = model; }
+        public int getDimensions() { return dimensions; }
+        public void setDimensions(int dimensions) { this.dimensions = dimensions; }
+    }
 
     /**
      * Firebase Cloud Messaging, for the Android app. A WebView cannot

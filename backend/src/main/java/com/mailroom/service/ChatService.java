@@ -64,6 +64,16 @@ public class ChatService {
     /** How many emails the answering model is shown. */
     private static final int CANDIDATES = 24;
 
+    /**
+     * How many the database returns before ranking.
+     *
+     * <p>Wider than what is shown, because semantic ranking can tell a
+     * genuine match from an incidental one and keyword search cannot. With
+     * no embeddings configured this only costs a slightly larger query —
+     * the extra rows are trimmed by recency, exactly as before.
+     */
+    private static final int RETRIEVED = 80;
+
     /** Turns of history given to the planner, newest last. */
     private static final int HISTORY_TURNS = 6;
 
@@ -76,6 +86,7 @@ public class ChatService {
     private final AiClient aiClient;
     private final AiResponseParser parser;
     private final AiSettingsService aiSettingsService;
+    private final EmbeddingService embeddingService;
     private final ObjectMapper objectMapper;
 
     public ChatService(EmailRepository emailRepository,
@@ -84,6 +95,7 @@ public class ChatService {
                        AiClient aiClient,
                        AiResponseParser parser,
                        AiSettingsService aiSettingsService,
+                       EmbeddingService embeddingService,
                        ObjectMapper objectMapper) {
         this.emailRepository = emailRepository;
         this.conversations = conversations;
@@ -91,6 +103,7 @@ public class ChatService {
         this.aiClient = aiClient;
         this.parser = parser;
         this.aiSettingsService = aiSettingsService;
+        this.embeddingService = embeddingService;
         this.objectMapper = objectMapper;
     }
 
@@ -107,10 +120,26 @@ public class ChatService {
     @Transactional
     public Answer ask(User user, UUID mailAccountId, UUID conversationId, String question) {
         ChatConversation conversation = conversationFor(user, conversationId, question);
-        List<String> history = recentTurns(conversation);
+        List<ChatMessage> turns = previousTurns(conversation);
 
-        ChatPlanAiResult plan = plan(question, history);
+        // The planner gets only what the user themselves typed. An
+        // assistant turn is derived from email content, and feeding it back
+        // into a prompt with no injection guard would be a way for an email
+        // to influence the next search — laundered through an answer, but
+        // influence all the same. The answering prompt, which is guarded,
+        // sees both sides.
+        ChatPlanAiResult plan = plan(question, asLines(turns, true));
         List<EmailMessage> candidates = retrieve(mailAccountId, plan);
+
+        // Keyword search decided what is eligible; this decides what is
+        // relevant, and only the top two dozen are ever shown.
+        candidates = embeddingService.rerank(question, candidates);
+        if (candidates.size() > CANDIDATES) candidates = candidates.subList(0, CANDIDATES);
+
+        // "Which of those is the latest?" is about the last answer's
+        // emails, not about a fresh search. Carrying them forward is what
+        // makes a second question a conversation rather than a reset.
+        candidates = withPrevious(candidates, lastCitations(turns));
 
         record(conversation, ChatRole.USER, question, List.of());
 
@@ -121,7 +150,7 @@ public class ChatService {
             return new Answer(conversation.getId(), nothing, List.of(), 0);
         }
 
-        ChatAnswerAiResult result = answer(question, candidates, history);
+        ChatAnswerAiResult result = answer(question, candidates, asLines(turns, false));
         List<EmailMessage> cited = verifyCitations(result.emailIds(), candidates);
 
         record(conversation, ChatRole.ASSISTANT, result.answer(),
@@ -209,12 +238,12 @@ public class ChatService {
         );
 
         List<EmailMessage> found = new ArrayList<>(emailRepository.findAll(spec,
-                PageRequest.of(0, CANDIDATES, Sort.by(Sort.Direction.DESC, "receivedAt"))).getContent());
+                PageRequest.of(0, RETRIEVED, Sort.by(Sort.Direction.DESC, "receivedAt"))).getContent());
 
         // Senders are matched separately and merged: "receipts from the
         // bank" means either, not both, and requiring both finds nothing
         // when the bank's address does not contain the word "bank".
-        if (plan.senders() != null && !plan.senders().isEmpty() && found.size() < CANDIDATES) {
+        if (plan.senders() != null && !plan.senders().isEmpty() && found.size() < RETRIEVED) {
             for (String sender : plan.senders().stream().limit(3).toList()) {
                 Specification<EmailMessage> bySender = EmailSpecifications.and(
                         EmailSpecifications.forMailAccount(mailAccountId),
@@ -228,7 +257,7 @@ public class ChatService {
         Set<UUID> seen = new LinkedHashSet<>();
         return found.stream()
                 .filter(email -> seen.add(email.getId()))
-                .limit(CANDIDATES)
+                .limit(RETRIEVED)
                 .toList();
     }
 
@@ -298,15 +327,58 @@ public class ChatService {
         return trimmed.length() <= 80 ? trimmed : trimmed.substring(0, 77) + "…";
     }
 
-    /** The user's own words from earlier turns. Never email content. */
-    private List<String> recentTurns(ChatConversation conversation) {
+    private List<ChatMessage> previousTurns(ChatConversation conversation) {
         if (conversation.getId() == null) return List.of();
         List<ChatMessage> all = messages.findByConversationIdOrderByCreatedAtAsc(conversation.getId());
-        return all.stream()
-                .skip(Math.max(0, all.size() - HISTORY_TURNS))
+        return all.stream().skip(Math.max(0, all.size() - HISTORY_TURNS)).toList();
+    }
+
+    /** @param questionsOnly true to leave out answers, which carry email content */
+    private List<String> asLines(List<ChatMessage> turns, boolean questionsOnly) {
+        return turns.stream()
+                .filter(message -> !questionsOnly || message.getRole() == ChatRole.USER)
                 .map(message -> (message.getRole() == ChatRole.USER ? "asked: " : "answered: ")
                         + clip(message.getContent()))
                 .toList();
+    }
+
+    /** The emails the previous answer cited, so a follow-up can mean "those". */
+    private List<EmailMessage> lastCitations(List<ChatMessage> turns) {
+        for (int i = turns.size() - 1; i >= 0; i--) {
+            ChatMessage message = turns.get(i);
+            if (message.getRole() != ChatRole.ASSISTANT || message.getCitedEmailIdsJson() == null) continue;
+            try {
+                List<String> ids = objectMapper.readValue(
+                        message.getCitedEmailIdsJson(), new TypeReference<List<String>>() {});
+                return ids.stream()
+                        .map(id -> emailRepository.findById(UUID.fromString(id)).orElse(null))
+                        .filter(java.util.Objects::nonNull)
+                        .toList();
+            } catch (Exception e) {
+                return List.of();
+            }
+        }
+        return List.of();
+    }
+
+    /**
+     * Puts the previous answer's emails in front of this search's results.
+     *
+     * <p>In front, because a follow-up is usually about them; not
+     * instead, because it might not be, and a question that has moved on
+     * should not keep being answered from the last one's mail.
+     */
+    private static List<EmailMessage> withPrevious(List<EmailMessage> found, List<EmailMessage> previous) {
+        if (previous.isEmpty()) return found;
+        Set<UUID> seen = new LinkedHashSet<>();
+        List<EmailMessage> merged = new ArrayList<>();
+        for (EmailMessage email : previous) {
+            if (seen.add(email.getId())) merged.add(email);
+        }
+        for (EmailMessage email : found) {
+            if (seen.add(email.getId())) merged.add(email);
+        }
+        return merged.size() <= CANDIDATES ? merged : merged.subList(0, CANDIDATES);
     }
 
     private void record(ChatConversation conversation, ChatRole role, String content, List<UUID> cited) {
