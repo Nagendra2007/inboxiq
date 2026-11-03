@@ -90,7 +90,6 @@ public class MailAccount {
     @Column(name = "gmail_watch_expiration")
     private Instant gmailWatchExpiration;
 
-    @CreationTimestamp
     /**
      * Where the history import got to, as Gmail's own page token.
      *
@@ -114,7 +113,11 @@ public class MailAccount {
     @Column(name = "backfill_stored", nullable = false)
     private int backfillStored = 0;
 
-    @Column(name = "created_at", updatable = false)
+    @CreationTimestamp
+    // nullable = false mirrors the real schema. Without it the tests build
+    // themselves a more forgiving table than production has, and a null
+    // here passes everywhere except where it matters.
+    @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
     @UpdateTimestamp
