@@ -4,6 +4,8 @@ import com.mailroom.entity.MailAccount;
 import com.mailroom.entity.MailProvider;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -54,4 +56,33 @@ public interface MailAccountRepository extends JpaRepository<MailAccount, UUID> 
                                            @Param("checkedBefore") Instant checkedBefore,
                                            @Param("activeSince") Instant activeSince,
                                            Pageable limit);
+
+    /**
+     * Records where the history import got to.
+     *
+     * <p>An explicit update rather than modifying the entity and saving
+     * it. Repository reads run in a read-only transaction of their own, so
+     * the account comes back as a read-only instance and Hibernate
+     * discards the change with a warning nobody reads — leaving the page
+     * token null forever, which means every page fetched is page one and
+     * the import never advances or ends.
+     */
+    @Modifying(clearAutomatically = true)
+    @Transactional
+    @Query("update MailAccount a set a.backfillPageToken = :pageToken, a.backfillStored = :stored where a.id = :id")
+    int recordBackfillProgress(UUID id, String pageToken, int stored);
+
+    @Modifying(clearAutomatically = true)
+    @Transactional
+    @Query("""
+            update MailAccount a
+               set a.backfillQuery = :query,
+                   a.backfillPageToken = :pageToken,
+                   a.backfillStored = :stored,
+                   a.backfillStartedAt = :startedAt,
+                   a.backfillFinishedAt = :finishedAt
+             where a.id = :id
+            """)
+    int recordBackfillState(UUID id, String query, String pageToken, int stored,
+                            java.time.Instant startedAt, java.time.Instant finishedAt);
 }

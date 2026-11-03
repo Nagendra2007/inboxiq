@@ -12,8 +12,10 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.context.request.async.AsyncRequestTimeoutException;
 
+import java.io.IOException;
 import java.time.Instant;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -62,6 +64,38 @@ public class GlobalExceptionHandler {
     @ExceptionHandler({AsyncRequestTimeoutException.class, AsyncRequestNotUsableException.class})
     public void handleClosedStream() {
         // Intentionally empty.
+    }
+
+    /**
+     * The client went away while we were writing to it.
+     *
+     * <p>A browser navigating, a tab closing, a phone putting the app to
+     * sleep — any of them breaks the connection mid-response, and the write
+     * fails with a broken pipe. Nothing is wrong, and there is nowhere to
+     * report it to: the socket we would report it on is the one that just
+     * closed.
+     *
+     * <p>Logged at debug rather than as an unhandled error, because these
+     * were the bulk of the ERROR lines in this application's log and they
+     * drown out the ones that mean something. An afternoon was spent
+     * reading around them.
+     */
+    @ExceptionHandler(IOException.class)
+    public void handleClientGone(IOException ex) throws IOException {
+        String message = ex.getMessage() == null ? "" : ex.getMessage().toLowerCase(Locale.ROOT);
+        boolean clientGone = message.contains("broken pipe")
+                || message.contains("connection reset")
+                || message.contains("connection abort");
+        // Anything else really is a failure to read or write something, and
+        // swallowing those would be its own silent bug.
+        if (!clientGone) throw ex;
+
+        // Returning nothing at all, deliberately. The previous handler
+        // answered with a JSON body, which on an event stream fails a
+        // second time - "No converter for LinkedHashMap with preset
+        // Content-Type text/event-stream" - and that second failure is
+        // what reaches the browser as a 500.
+        log.debug("Client disconnected mid-response: {}", ex.getMessage());
     }
 
     @ExceptionHandler(Exception.class)
