@@ -224,4 +224,7 @@ export const DevicesApi = {
 
   /** Sends one to every phone signed in to this account. */
   test: () => apiFetch<{ sent: boolean }>('/api/devices/test', { method: 'POST' }),
+
+  unregister: (token: string) =>
+    apiFetch<{ registered: boolean }>('/api/devices/unregister', { method: 'POST', body: { token } }),
 };
