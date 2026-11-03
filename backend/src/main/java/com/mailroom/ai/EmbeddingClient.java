@@ -50,9 +50,14 @@ public class EmbeddingClient {
         this.objectMapper = objectMapper;
     }
 
+    /**
+     * A key is not part of this. Some endpoints want one and some are
+     * reached another way, and refusing to work without one would disable
+     * the feature on a perfectly good gateway.
+     */
     public boolean isEnabled() {
         AppProperties.Embeddings config = appProperties.getEmbeddings();
-        return notBlank(config.getApiKey()) && notBlank(config.getModel()) && notBlank(config.getBaseUrl());
+        return notBlank(config.getModel()) && notBlank(config.getBaseUrl());
     }
 
     public String model() {
@@ -87,43 +92,67 @@ public class EmbeddingClient {
 
         AppProperties.Embeddings config = appProperties.getEmbeddings();
         try {
-            Map<String, Object> body = new LinkedHashMap<>();
-            body.put("model", config.getModel());
-            body.put("input", texts);
-            // Smaller vectors, supported by current OpenAI embedding models
-            // and ignored by providers that do not know it. A mailbox's
-            // worth has to fit in memory to be compared there.
-            if (config.getDimensions() > 0) body.put("dimensions", config.getDimensions());
-
-            String response = webClientBuilder.build().post()
-                    .uri(config.getBaseUrl() + "/embeddings")
-                    .header("Authorization", "Bearer " + config.getApiKey())
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .bodyValue(objectMapper.writeValueAsString(body))
-                    .retrieve()
-                    .bodyToMono(String.class)
-                    .block(TIMEOUT);
-
-            JsonNode data = objectMapper.readTree(response).path("data");
-            if (!data.isArray() || data.size() != texts.size()) {
-                log.warn("Embedding response had {} vectors for {} inputs", data.size(), texts.size());
-                return List.of();
+            return call(config, texts, config.getDimensions());
+        } catch (Exception first) {
+            // "dimensions" is an OpenAI extension. A gateway in front of
+            // the same model may reject the whole request for an argument
+            // it does not know, and the vectors are perfectly usable at
+            // whatever size it returns — so losing the feature over an
+            // optional parameter would be a poor trade.
+            if (config.getDimensions() > 0) {
+                try {
+                    List<float[]> vectors = call(config, texts, 0);
+                    log.info("This endpoint does not accept 'dimensions'; using the model's own size");
+                    dimensionsRejected = true;
+                    return vectors;
+                } catch (Exception second) {
+                    log.warn("Embedding failed: {}", second.toString());
+                    return List.of();
+                }
             }
-
-            List<float[]> vectors = new ArrayList<>(texts.size());
-            for (JsonNode item : data) {
-                JsonNode values = item.path("embedding");
-                float[] vector = new float[values.size()];
-                for (int i = 0; i < values.size(); i++) vector[i] = (float) values.get(i).asDouble();
-                vectors.add(normalise(vector));
-            }
-            return vectors;
-
-        } catch (Exception e) {
             // Never fatal: a question is still answerable without this.
-            log.warn("Embedding failed: {}", e.toString());
+            log.warn("Embedding failed: {}", first.toString());
             return List.of();
         }
+    }
+
+    /** Remembered so the rejected parameter is not re-sent on every batch. */
+    private volatile boolean dimensionsRejected = false;
+
+    private List<float[]> call(AppProperties.Embeddings config, List<String> texts, int dimensions)
+            throws Exception {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("model", config.getModel());
+        body.put("input", texts);
+        if (dimensions > 0 && !dimensionsRejected) body.put("dimensions", dimensions);
+
+        WebClient.RequestBodySpec request = webClientBuilder.build().post()
+                .uri(config.getBaseUrl() + "/embeddings")
+                .contentType(MediaType.APPLICATION_JSON);
+        if (notBlank(config.getApiKey())) {
+            request = request.header("Authorization", "Bearer " + config.getApiKey());
+        }
+
+        String response = request
+                .bodyValue(objectMapper.writeValueAsString(body))
+                .retrieve()
+                .bodyToMono(String.class)
+                .block(TIMEOUT);
+
+        JsonNode data = objectMapper.readTree(response).path("data");
+        if (!data.isArray() || data.size() != texts.size()) {
+            throw new IllegalStateException(
+                    "embedding response had " + data.size() + " vectors for " + texts.size() + " inputs");
+        }
+
+        List<float[]> vectors = new ArrayList<>(texts.size());
+        for (JsonNode item : data) {
+            JsonNode values = item.path("embedding");
+            float[] vector = new float[values.size()];
+            for (int i = 0; i < values.size(); i++) vector[i] = (float) values.get(i).asDouble();
+            vectors.add(normalise(vector));
+        }
+        return vectors;
     }
 
     /**
