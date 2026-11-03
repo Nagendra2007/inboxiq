@@ -97,9 +97,12 @@ export function AppLayout() {
   const [stats, setStats] = useState<DashboardDto | null>(null);
   const connected = !!user?.gmailConnected;
   const location = useLocation();
-  // On phones the floating compose button would sit on top of the reply
-  // composer, so it's hidden while an email is open.
-  const readingEmail = location.pathname === '/inbox' && new URLSearchParams(location.search).has('email');
+  // On phones the floating compose button sits exactly where a page's own
+  // bottom input goes, so it is hidden wherever there is one: the reply
+  // composer on an open email, and the question box on Ask.
+  const hasOwnBottomInput =
+    (location.pathname === '/inbox' && new URLSearchParams(location.search).has('email')) ||
+    location.pathname === '/ask';
 
   const refreshStats = useCallback(() => {
     if (!connected) {
@@ -160,7 +163,7 @@ export function AppLayout() {
         <Outlet context={shell} />
       </main>
       <MobileTabBar stats={stats} />
-      {connected && !readingEmail && <MobileComposeButton onCompose={openCompose} />}
+      {connected && !hasOwnBottomInput && <MobileComposeButton onCompose={openCompose} />}
       {composeOpen && (
         <ComposeModal
           onClose={() => setComposeOpen(false)}
