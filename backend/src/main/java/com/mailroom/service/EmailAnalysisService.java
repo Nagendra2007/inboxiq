@@ -27,6 +27,9 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.ArrayList;
+import java.util.Locale;
+import java.util.Set;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -126,7 +129,8 @@ public class EmailAnalysisService {
             // transaction; on the async path there otherwise isn't one.
             return transactionTemplate.execute(status -> {
                 EmailAnalysis saved = emailAnalysisRepository.save(analysis);
-                replaceActionItems(email, aiResult.actionItems());
+                replaceActionItems(email, worthTracking(
+                        aiResult.actionItems(), analysis.getOtpCode(), analysis.getCategory()));
                 return saved;
             });
 
@@ -231,6 +235,59 @@ public class EmailAnalysisService {
         if (analysis.getActionRequired() == null) analysis.setActionRequired(false);
         if (analysis.getImportantDatesJson() == null) analysis.setImportantDatesJson("[]");
         if (analysis.getKeyPointsJson() == null) analysis.setKeyPointsJson("[]");
+    }
+
+    /**
+     * Phrases that are never a to-do, however the model phrases them.
+     *
+     * <p>Matched on the whole description, not as substrings: "read the
+     * contract before Friday" is a real task and "read more" is a button.
+     */
+    private static final Set<String> NOT_A_TASK = Set.of(
+            "no action required", "no action needed", "no action", "none", "n/a",
+            "not applicable", "nothing to do", "read more", "learn more", "shop now",
+            "click here", "view in browser", "unsubscribe", "see details", "read the email",
+            "view the email", "open the attachment");
+
+    /**
+     * Which of the model's suggestions are worth putting on a list.
+     *
+     * <p>A to-do list people keep using is one they trust, and one wrong
+     * item costs more than ten missing ones. The prompt asks for restraint;
+     * this enforces the cases where restraint is not a judgement call.
+     *
+     * <p>A one-time code is the clearest of them. "Enter the verification
+     * code" is finished in the ten seconds it takes to read the email, and
+     * the code has expired by the time anyone looks at a list — so an email
+     * carrying a code produces no to-dos at all.
+     */
+    static List<EmailAnalysisAiResult.ActionItemAiResult> worthTracking(
+            List<EmailAnalysisAiResult.ActionItemAiResult> items,
+            String otpCode,
+            EmailCategory category) {
+
+        if (items == null || items.isEmpty()) return List.of();
+        if (otpCode != null && !otpCode.isBlank()) return List.of();
+
+        // Advertising asks you to do something in every line. Only a stated
+        // deadline makes one of those a commitment rather than a pitch.
+        boolean promotional = category == EmailCategory.MARKETING
+                || category == EmailCategory.NEWSLETTER
+                || category == EmailCategory.SOCIAL;
+
+        List<EmailAnalysisAiResult.ActionItemAiResult> kept = new ArrayList<>();
+        for (EmailAnalysisAiResult.ActionItemAiResult item : items) {
+            if (item == null || item.description() == null) continue;
+            String description = item.description().trim();
+            if (description.isEmpty()) continue;
+
+            String normalised = description.toLowerCase(Locale.ROOT).replaceAll("[.!\s]+$", "");
+            if (NOT_A_TASK.contains(normalised)) continue;
+            if (promotional && item.deadline() == null) continue;
+
+            kept.add(item);
+        }
+        return kept;
     }
 
     private void replaceActionItems(EmailMessage email, List<EmailAnalysisAiResult.ActionItemAiResult> aiItems) {
