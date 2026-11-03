@@ -34,6 +34,34 @@ export interface AudioRecorderState {
 }
 
 /** Opus in WebM is what Chrome and Firefox both produce; Safari gives mp4. */
+/**
+ * Opens the microphone, twice if necessary.
+ *
+ * <p>Browser-side cleanup helps the transcriber as much as it helps a
+ * call: less room noise is less for the model to guess at. But asking for
+ * echo cancellation makes Chrome request a voice-communication audio
+ * source, and plenty of Android devices will not hand that out to a
+ * WebView — the device refuses to open at all and reports
+ * NotReadableError, which reads as "your microphone is broken".
+ *
+ * <p>Cleaner audio is not worth no audio, so a refusal is retried with no
+ * processing requested. Whisper copes with room noise far better than it
+ * copes with silence.
+ */
+async function openMicrophone(): Promise<MediaStream> {
+  try {
+    return await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    });
+  } catch (err) {
+    const name = (err as DOMException)?.name;
+    if (name !== 'NotReadableError' && name !== 'OverconstrainedError' && name !== 'AbortError') {
+      throw err;
+    }
+    return navigator.mediaDevices.getUserMedia({ audio: true });
+  }
+}
+
 function pickMimeType(): string | undefined {
   if (typeof MediaRecorder === 'undefined') return undefined;
   for (const type of ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4']) {
@@ -78,12 +106,12 @@ export function useAudioRecorder(maxSeconds = 60): AudioRecorderState {
     setSeconds(0);
     chunksRef.current = [];
     setStarting(true);
+    // Nothing from a previous attempt should still hold the device: a
+    // stream left open is itself a reason the next one cannot be.
+    teardown();
+
     try {
-      // Browser-side cleanup helps the transcriber as much as it helps a
-      // call: less room noise is less for the model to guess at.
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-      });
+      const stream = await openMicrophone();
       streamRef.current = stream;
 
       // Android's WebView supports fewer container formats than Chrome
@@ -150,9 +178,10 @@ export function useAudioRecorder(maxSeconds = 60): AudioRecorderState {
           setError('No microphone was found.');
           break;
         case 'NotReadableError':
-          // Something else holds the device: a call, another app, or a
-          // recorder this page failed to release.
-          setError('The microphone is in use by something else. Close it and try again.');
+          // Reached only when the plain retry failed too, so this really
+          // is the device being unavailable rather than the processing
+          // being refused.
+          setError('The microphone could not be opened. Close anything else using it and try again.');
           break;
         case 'OverconstrainedError':
           setError('This microphone cannot record in the format Mailroom needs.');
