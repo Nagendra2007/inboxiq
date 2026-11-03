@@ -53,4 +53,19 @@ public class DeviceController {
         devices.sendTest(currentUserProvider.getCurrentUser().getId());
         return Map.of("sent", true);
     }
+
+    /**
+     * A one-time code notification, on demand.
+     *
+     * <p>Codes travel on their own path — their own message shape, their
+     * own channel, their own layout on the phone — and that path could
+     * only ever be exercised by waiting for an email that happened to
+     * contain a code. When it went wrong there was no way to tell a
+     * failure to find the code from a failure to display it.
+     */
+    @PostMapping("/test-code")
+    public Map<String, Boolean> testCode() {
+        devices.sendTestCode(currentUserProvider.getCurrentUser().getId());
+        return Map.of("sent", true);
+    }
 }
