@@ -30,6 +30,14 @@ export const InboxIcon = (p: IconProps) => (
   </Svg>
 );
 
+export const AskIcon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+    <path d="M9.6 9.4a2.4 2.4 0 0 1 4.7.7c0 1.6-2.4 2.4-2.4 2.4" />
+    <path d="M12 15.6h.01" />
+  </Svg>
+);
+
 export const DashboardIcon = (p: IconProps) => (
   <Svg {...p}>
     <rect x="3" y="3" width="7" height="9" rx="1.5" />

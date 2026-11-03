@@ -4,6 +4,7 @@ import { RealtimeProvider } from './context/RealtimeContext';
 import { AppLayout } from './pages/AppLayout';
 import { LoginPage } from './pages/LoginPage';
 import { InboxPage } from './pages/InboxPage';
+import { AskPage } from './pages/AskPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { ActionItemsPage } from './pages/ActionItemsPage';
 import { SettingsPage } from './pages/SettingsPage';
@@ -18,6 +19,7 @@ export default function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route element={<AppLayout />}>
             <Route path="/inbox" element={<InboxPage />} />
+            <Route path="/ask" element={<AskPage />} />
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/action-items" element={<ActionItemsPage />} />
             <Route path="/settings" element={<SettingsPage />} />

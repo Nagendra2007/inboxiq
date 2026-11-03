@@ -66,6 +66,19 @@ public class EmailPersistenceService {
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public EmailMessage storeIfNew(MailAccount account, ParsedGmailMessage parsed) {
+        return storeIfNew(account, parsed, AnalysisStatus.PENDING);
+    }
+
+    /**
+     * Stores a message with its analysis in the given state.
+     *
+     * <p>A history import passes {@link AnalysisStatus#DEFERRED}: the mail
+     * is searchable immediately, and the AI only looks at a message when
+     * something actually needs it to.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public EmailMessage storeIfNew(MailAccount account, ParsedGmailMessage parsed,
+                                   AnalysisStatus initialStatus) {
         if (emailRepository.findByMailAccountIdAndProviderMessageId(account.getId(), parsed.messageId()).isPresent()) {
             return null;
         }
@@ -97,7 +110,7 @@ public class EmailPersistenceService {
 
         EmailAnalysis pending = new EmailAnalysis();
         pending.setEmail(saved);
-        pending.setAnalysisStatus(AnalysisStatus.PENDING);
+        pending.setAnalysisStatus(initialStatus);
         saved.setAnalysis(emailAnalysisRepository.save(pending));
         return saved;
     }

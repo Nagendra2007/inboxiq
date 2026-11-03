@@ -70,6 +70,8 @@ export interface RealtimeEventMap {
   /** archived is present only when the message moved in or out of the inbox. */
   'email.updated': { id: string; read: boolean; archived?: boolean };
   'email.deleted': { id: string };
+  /** A page of imported history landed; stored is the running total. */
+  'mail.backfill.progress': { stored: number; done: boolean };
   'email.analysis.started': AnalysisEvent;
   'email.analysis.completed': AnalysisEvent;
   'email.analysis.failed': AnalysisEvent;

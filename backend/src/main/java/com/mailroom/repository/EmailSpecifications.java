@@ -45,6 +45,40 @@ public final class EmailSpecifications {
         };
     }
 
+    /**
+     * Matches an email containing <em>any</em> of these words.
+     *
+     * <p>The single-keyword version above is what a search box needs. A
+     * question does not arrive as one keyword: "my fee receipts" has to
+     * find mail saying tuition, invoice, payment or paid, because the
+     * sender chose those words and the reader did not. The planner expands
+     * the question into the set; this turns the set into one query rather
+     * than one query per word.
+     */
+    public static Specification<EmailMessage> anyKeyword(List<String> keywords) {
+        if (keywords == null || keywords.isEmpty()) return null;
+        List<String> usable = keywords.stream()
+                .filter(word -> !isBlank(word))
+                // A one or two letter term matches most of a mailbox and
+                // drowns out everything the planner actually meant.
+                .filter(word -> word.trim().length() >= 3)
+                .limit(12)
+                .toList();
+        if (usable.isEmpty()) return null;
+
+        return (root, query, cb) -> {
+            List<Predicate> matches = new ArrayList<>();
+            for (String word : usable) {
+                String pattern = like(word);
+                matches.add(cb.like(cb.lower(root.get("subject")), pattern));
+                matches.add(cb.like(cb.lower(root.get("snippet")), pattern));
+                matches.add(cb.like(cb.lower(cb.coalesce(root.get("bodyText"), "")), pattern));
+                matches.add(cb.like(cb.lower(root.get("sender")), pattern));
+            }
+            return cb.or(matches.toArray(new Predicate[0]));
+        };
+    }
+
     public static Specification<EmailMessage> category(EmailCategory category) {
         if (category == null) return null;
         return (root, query, cb) -> {

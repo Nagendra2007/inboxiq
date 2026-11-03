@@ -219,6 +219,60 @@ export const PushApi = {
  * the other not, and until this was visible the only way to tell them
  * apart was reading the server's logs.
  */
+export interface ChatCitation {
+  id: string;
+  sender: string | null;
+  subject: string | null;
+  receivedAt: string | null;
+  snippet: string | null;
+}
+
+export interface ChatAnswer {
+  conversationId: string;
+  answer: string;
+  citations: ChatCitation[];
+  /** How many emails the answer was chosen from, so "nothing found" is distinguishable. */
+  searched: number;
+}
+
+export interface ChatTurn {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  at: string;
+  citations: ChatCitation[];
+}
+
+export const ChatApi = {
+  ask: (question: string, conversationId?: string) =>
+    apiFetch<ChatAnswer>('/api/chat/ask', { method: 'POST', body: { question, conversationId } }),
+
+  conversations: () =>
+    apiFetch<{ id: string; title: string; updatedAt: string }[]>('/api/chat/conversations'),
+
+  history: (id: string) => apiFetch<ChatTurn[]>(`/api/chat/conversations/${id}`),
+
+  remove: (id: string) =>
+    apiFetch<{ deleted: boolean }>(`/api/chat/conversations/${id}`, { method: 'DELETE' }),
+};
+
+export const BackfillApi = {
+  progress: () =>
+    apiFetch<{
+      running: boolean;
+      stored: number;
+      startedAt: string | null;
+      finishedAt: string | null;
+      query: string | null;
+    }>('/api/mail/backfill'),
+
+  start: (months: number) =>
+    apiFetch<{ started: boolean; months: number }>('/api/mail/backfill', {
+      method: 'POST',
+      body: { months },
+    }),
+};
+
 export const DevicesApi = {
   config: () => apiFetch<{ enabled: boolean }>('/api/devices/config'),
 

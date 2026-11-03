@@ -160,9 +160,11 @@ public class EmailController {
                     email.getMailAccount().getId(), email.getProviderMessageId());
         }
         // Emails stored before background analysis existed may never have
-        // been analyzed; do it now that someone is reading one. The result
+        // been analyzed, and imported history is stored deliberately
+        // unanalysed; do it now that someone is reading one. The result
         // arrives over the realtime stream.
-        if (email.getAnalysis() == null) {
+        if (email.getAnalysis() == null
+                || email.getAnalysis().getAnalysisStatus() == com.mailroom.entity.AnalysisStatus.DEFERRED) {
             analysisQueue.enqueueAfterCommit(email.getId(), email.getMailAccount().getUser().getId());
         }
         List<com.mailroom.entity.ActionItem> items = actionItemRepository.findByEmailId(email.getId());
