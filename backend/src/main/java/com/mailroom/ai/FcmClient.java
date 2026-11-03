@@ -79,7 +79,13 @@ public class FcmClient {
      * large and put exactly it on the clipboard, without parsing prose.
      */
     public Result sendOtp(String deviceToken, String code, String from, String url) {
-        return post(deviceToken, Map.of("kind", "otp", "code", code, "from", from, "url", url));
+        // "sender", never "from": FCM reserves "from" as a data key, along
+        // with "message_type" and anything beginning "google" or "gcm", and
+        // rejects the whole message for using one. Ordinary mail went
+        // through and codes silently did not, because only this payload
+        // had it — and the rejection happens at Google, so the phone had
+        // nothing to display and no way to know it was supposed to.
+        return post(deviceToken, Map.of("kind", "otp", "code", code, "sender", from, "url", url));
     }
 
     private Result post(String deviceToken, Map<String, String> data) {
