@@ -72,7 +72,6 @@ public class SecurityConfig {
             "form-action 'self'");
 
     /** Client-side routes of the React app; see SpaForwardController. */
-    static final String[] SPA_ROUTES = {"/", "/login", "/inbox", "/dashboard", "/action-items", "/settings"};
 
     private final AppProperties appProperties;
     private final OAuth2LoginSuccessHandler oAuth2LoginSuccessHandler;
@@ -134,7 +133,7 @@ public class SecurityConfig {
                     .requestMatchers("/api/**").authenticated()
                     // Static SPA bundle (present only when the frontend is
                     // built into the jar — see the root Dockerfile).
-                    .requestMatchers(HttpMethod.GET, SPA_ROUTES).permitAll()
+                    .requestMatchers(HttpMethod.GET, SpaRoutes.ALL).permitAll()
                     .requestMatchers(HttpMethod.GET, "/index.html", "/assets/**", "/favicon.svg", "/robots.txt").permitAll()
                     // Installable-app files. The service worker and manifest
                     // are fetched by the browser itself, outside any session
